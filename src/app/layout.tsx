@@ -1,23 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Nunito } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin", "cyrillic"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin", "cyrillic"],
-});
-
-const nunito = Nunito({
-  variable: "--font-nunito",
-  subsets: ["latin", "cyrillic"],
-  weight: ["400", "700", "800", "900"],
-});
 
 export const metadata: Metadata = {
   title: "ЭнергоГерой — 2D-платформер про энергосбережение",
@@ -59,9 +42,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} ${nunito.variable} antialiased bg-background text-foreground`}
-      >
+      <body className="antialiased bg-background text-foreground font-sans">
         {children}
         <Toaster />
       </body>

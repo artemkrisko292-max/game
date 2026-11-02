@@ -12,6 +12,8 @@ import {
   RotateCcw,
   Star,
   ToggleLeft,
+  Volume2,
+  VolumeX,
   Zap,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -180,7 +182,11 @@ export default function EnergoHeroGame() {
               aria-label={muted ? 'Включить звук' : 'Выключить звук'}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-black/45 text-white/90 backdrop-blur-sm transition hover:bg-black/65"
             >
-              {muted ? <Zap className="h-4 w-4 opacity-50" /> : <Zap className="h-4 w-4" />}
+              {muted ? (
+                <VolumeX className="h-4 w-4" />
+              ) : (
+                <Volume2 className="h-4 w-4" />
+              )}
             </button>
             {(phase === 'playing' || phase === 'paused') && (
               <button
