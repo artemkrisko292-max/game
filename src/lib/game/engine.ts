@@ -376,6 +376,8 @@ export class EnergoGame {
 
     this.worldW = this.cols * TILE
     this.worldH = this.rows * TILE
+    this.bulbsGot = 0
+    this.switchesGot = 0
     this.bulbsTotal = this.bulbs.length
     this.switchesTotal = this.switches.length
     this.runBulbsTotal = LEVELS.reduce(
@@ -428,8 +430,9 @@ export class EnergoGame {
   ])
 
   private onKeyDown = (e: KeyboardEvent) => {
-    if (this.GAME_KEYS.has(e.code)) e.preventDefault()
-    switch (e.code) {
+    const c = this.keyId(e)
+    if (this.GAME_KEYS.has(c)) e.preventDefault()
+    switch (c) {
       case 'ArrowLeft':
       case 'KeyA':
         this.kb.left = true
@@ -454,7 +457,7 @@ export class EnergoGame {
   }
 
   private onKeyUp = (e: KeyboardEvent) => {
-    switch (e.code) {
+    switch (this.keyId(e)) {
       case 'ArrowLeft':
       case 'KeyA':
         this.kb.left = false
@@ -470,6 +473,15 @@ export class EnergoGame {
         this.kb.jump = false
         break
     }
+  }
+
+  // Нормализация: некоторые окружения присылают события без e.code —
+  // тогда откатываемся к e.key ('ArrowLeft', 'a', ' ', 'Enter').
+  private keyId(e: KeyboardEvent): string {
+    if (e.code) return e.code
+    const k = e.key
+    if (k === ' ') return 'Space'
+    return k.length === 1 ? `Key${k.toUpperCase()}` : k
   }
 
   private onBlur = () => {

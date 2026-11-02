@@ -1,0 +1,972 @@
+     1→// Отрисовка игры «ЭнергоГерой» на Canvas 2D.
+     2→// Вся графика рисуется кодом: спрайты, фоны, свет, HUD.
+     3→
+     4→import { EnergoGame, TILE, VIEW_W, VIEW_H } from './engine'
+     5→import { LEVELS } from './levels'
+     6→import type { ThemeName } from './levels'
+     7→
+     8→interface Theme {
+     9→  skyTop: string
+    10→  skyBot: string
+    11→  wall: string
+    12→  wallTop: string
+    13→  wallDark: string
+    14→  accent: string
+    15→}
+    16→
+    17→const THEMES: Record<ThemeName, Theme> = {
+    18→  bedroom: {
+    19→    skyTop: '#231a33',
+    20→    skyBot: '#473059',
+    21→    wall: '#43325a',
+    22→    wallTop: '#5d4577',
+    23→    wallDark: '#322447',
+    24→    accent: '#8f6bb0',
+    25→  },
+    26→  kitchen: {
+    27→    skyTop: '#fdf0c2',
+    28→    skyBot: '#f6d896',
+    29→    wall: '#c9713d',
+    30→    wallTop: '#e8934f',
+    31→    wallDark: '#a5562a',
+    32→    accent: '#b8622f',
+    33→  },
+    34→  basement: {
+    35→    skyTop: '#141b16',
+    36→    skyBot: '#28352b',
+    37→    wall: '#3a463d',
+    38→    wallTop: '#526254',
+    39→    wallDark: '#2b362e',
+    40→    accent: '#6d8a6f',
+    41→  },
+    42→}
+    43→
+    44→export function render(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+    45→  const theme = THEMES[LEVELS[g.levelIndex].theme]
+    46→  ctx.clearRect(0, 0, VIEW_W, VIEW_H)
+    47→  ctx.save()
+    48→
+    49→  // Тряска камеры
+    50→  if (g.shake > 0.3) {
+    51→    ctx.translate(
+    52→      (Math.random() - 0.5) * g.shake,
+    53→      (Math.random() - 0.5) * g.shake,
+    54→    )
+    55→  }
+    56→
+    57→  drawBackground(ctx, g, theme)
+    58→
+    59→  ctx.save()
+    60→  ctx.translate(-Math.round(g.camX), -Math.round(g.camY))
+    61→
+    62→  drawTiles(ctx, g, theme)
+    63→  drawHazards(ctx, g)
+    64→  drawSwitches(ctx, g)
+    65→  drawExit(ctx, g)
+    66→  drawLampCones(ctx, g)
+    67→  drawBulbs(ctx, g)
+    68→  drawPlats(ctx, g)
+    69→  drawVampires(ctx, g)
+    70→  drawPhantoms(ctx, g)
+    71→  drawPlayer(ctx, g)
+    72→  drawParticles(ctx, g)
+    73→  drawLampGlows(ctx, g)
+    74→
+    75→  ctx.restore()
+    76→  ctx.restore()
+    77→
+    78→  drawHUD(ctx, g)
+    79→}
+    80→
+    81→// ---------- Фон и параллакс ----------
+    82→
+    83→function drawBackground(
+    84→  ctx: CanvasRenderingContext2D,
+    85→  g: EnergoGame,
+    86→  th: Theme,
+    87→) {
+    88→  const grad = ctx.createLinearGradient(0, 0, 0, VIEW_H)
+    89→  grad.addColorStop(0, th.skyTop)
+    90→  grad.addColorStop(1, th.skyBot)
+    91→  ctx.fillStyle = grad
+    92→  ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+    93→
+    94→  const name = LEVELS[g.levelIndex].theme
+    95→  if (name === 'bedroom') drawBedroomBg(ctx, g)
+    96→  else if (name === 'kitchen') drawKitchenBg(ctx, g)
+    97→  else drawBasementBg(ctx, g)
+    98→}
+    99→
+   100→function wrapX(i: number, camX: number, k: number, span: number): number {
+   101→  const m = (i * 137.13 - camX * k) % span
+   102→  return (m < 0 ? m + span : m) - 60
+   103→}
+   104→
+   105→function drawBedroomBg(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   106→  // Звёзды
+   107→  ctx.fillStyle = 'rgba(255,240,210,0.8)'
+   108→  for (let i = 0; i < 46; i++) {
+   109→    const x = wrapX(i * 89, g.camX, 0.22, VIEW_W + 120)
+   110→    const y = (i * 53) % 260
+   111→    const s = 1 + ((i * 7) % 3) * 0.5
+   112→    const tw = 0.5 + 0.5 * Math.sin(g.frame * 0.04 + i * 1.7)
+   113→    ctx.globalAlpha = 0.35 + tw * 0.5
+   114→    ctx.fillRect(x, y, s, s)
+   115→  }
+   116→  ctx.globalAlpha = 1
+   117→
+   118→  // Луна
+   119→  const mx = VIEW_W * 0.8 - g.camX * 0.08
+   120→  const mg = ctx.createRadialGradient(mx, 92, 8, mx, 92, 70)
+   121→  mg.addColorStop(0, 'rgba(255,236,180,0.5)')
+   122→  mg.addColorStop(1, 'rgba(255,236,180,0)')
+   123→  ctx.fillStyle = mg
+   124→  ctx.fillRect(mx - 70, 22, 140, 140)
+   125→  ctx.fillStyle = '#f7e6ae'
+   126→  ctx.beginPath()
+   127→  ctx.arc(mx, 92, 26, 0, Math.PI * 2)
+   128→  ctx.fill()
+   129→  ctx.fillStyle = 'rgba(214,190,130,0.7)'
+   130→  ctx.beginPath()
+   131→  ctx.arc(mx - 8, 86, 5, 0, Math.PI * 2)
+   132→  ctx.arc(mx + 9, 99, 4, 0, Math.PI * 2)
+   133→  ctx.fill()
+   134→
+   135→  // Полосы обоев
+   136→  ctx.strokeStyle = 'rgba(255,255,255,0.045)'
+   137→  ctx.lineWidth = 26
+   138→  for (let i = 0; i < 14; i++) {
+   139→    const x = wrapX(i * 150, g.camX, 0.45, VIEW_W + 300)
+   140→    ctx.beginPath()
+   141→    ctx.moveTo(x, 0)
+   142→    ctx.lineTo(x, VIEW_H)
+   143→    ctx.stroke()
+   144→  }
+   145→}
+   146→
+   147→function drawKitchenBg(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   148→  // Солнце
+   149→  const mx = VIEW_W * 0.82 - g.camX * 0.06
+   150→  const sg = ctx.createRadialGradient(mx, 80, 10, mx, 80, 90)
+   151→  sg.addColorStop(0, 'rgba(255,214,110,0.65)')
+   152→  sg.addColorStop(1, 'rgba(255,214,110,0)')
+   153→  ctx.fillStyle = sg
+   154→  ctx.fillRect(mx - 90, -10, 180, 180)
+   155→  ctx.fillStyle = '#ffd66b'
+   156→  ctx.beginPath()
+   157→  ctx.arc(mx, 80, 30, 0, Math.PI * 2)
+   158→  ctx.fill()
+   159→
+   160→  // Окна
+   161→  for (let i = 0; i < 4; i++) {
+   162→    const x = wrapX(i * 420 + 120, g.camX, 0.35, VIEW_W + 800)
+   163→    ctx.fillStyle = 'rgba(255,255,255,0.55)'
+   164→    rr(ctx, x, 60, 150, 170, 10)
+   165→    ctx.fill()
+   166→    ctx.fillStyle = 'rgba(180,220,170,0.65)'
+   167→    rr(ctx, x + 8, 68, 134, 154, 6)
+   168→    ctx.fill()
+   169→    ctx.strokeStyle = 'rgba(120,90,50,0.5)'
+   170→    ctx.lineWidth = 5
+   171→    ctx.beginPath()
+   172→    ctx.moveTo(x + 75, 68)
+   173→    ctx.lineTo(x + 75, 222)
+   174→    ctx.moveTo(x + 8, 145)
+   175→    ctx.lineTo(x + 142, 145)
+   176→    ctx.stroke()
+   177→  }
+   178→
+   179→  // Фартук из плитки внизу
+   180→  ctx.strokeStyle = 'rgba(150,95,45,0.16)'
+   181→  ctx.lineWidth = 2
+   182→  for (let i = 0; i < 26; i++) {
+   183→    const x = wrapX(i * 60, g.camX, 0.6, VIEW_W + 200)
+   184→    for (let r = 0; r < 4; r++) {
+   185→      ctx.strokeRect(x, 330 + r * 44, 56, 40)
+   186→    }
+   187→  }
+   188→}
+   189→
+   190→function drawBasementBg(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   191→  // Трубы
+   192→  for (const py of [110, 250]) {
+   193→    ctx.fillStyle = 'rgba(90,110,95,0.5)'
+   194→    ctx.fillRect(0, py, VIEW_W, 16)
+   195→    ctx.fillStyle = 'rgba(60,75,64,0.6)'
+   196→    ctx.fillRect(0, py + 12, VIEW_W, 4)
+   197→    for (let i = 0; i < 8; i++) {
+   198→      const x = wrapX(i * 260, g.camX, 0.4, VIEW_W + 500)
+   199→      ctx.fillStyle = 'rgba(110,130,115,0.6)'
+   200→      ctx.fillRect(x, py - 4, 18, 24)
+   201→    }
+   202→  }
+   203→  // Зелёное свечение
+   204→  for (let i = 0; i < 5; i++) {
+   205→    const x = wrapX(i * 380 + 90, g.camX, 0.3, VIEW_W + 600)
+   206→    const gl = ctx.createRadialGradient(x, 400, 5, x, 400, 90)
+   207→    gl.addColorStop(0, 'rgba(140,230,140,0.10)')
+   208→    gl.addColorStop(1, 'rgba(140,230,140,0)')
+   209→    ctx.fillStyle = gl
+   210→    ctx.fillRect(x - 90, 310, 180, 180)
+   211→  }
+   212→}
+   213→
+   214→// ---------- Тайлы ----------
+   215→
+   216→function hash2(c: number, r: number): number {
+   217→  return ((c * 73856093) ^ (r * 19349663)) % 1000 / 1000
+   218→}
+   219→
+   220→function drawTiles(
+   221→  ctx: CanvasRenderingContext2D,
+   222→  g: EnergoGame,
+   223→  th: Theme,
+   224→) {
+   225→  const c0 = Math.max(0, Math.floor(g.camX / TILE) - 1)
+   226→  const c1 = Math.min(g.cols - 1, Math.ceil((g.camX + VIEW_W) / TILE) + 1)
+   227→  const r0 = Math.max(0, Math.floor(g.camY / TILE) - 1)
+   228→  const r1 = Math.min(g.rows - 1, Math.ceil((g.camY + VIEW_H) / TILE) + 1)
+   229→
+   230→  for (let r = r0; r <= r1; r++) {
+   231→    for (let c = c0; c <= c1; c++) {
+   232→      if (g.grid[r * g.cols + c] !== 1) continue
+   233→      const x = c * TILE
+   234→      const y = r * TILE
+   235→      ctx.fillStyle = th.wall
+   236→      ctx.fillRect(x, y, TILE, TILE)
+   237→
+   238→      // Тёмный низ
+   239→      if (r + 1 >= g.rows || g.grid[(r + 1) * g.cols + c] !== 1) {
+   240→        ctx.fillStyle = th.wallDark
+   241→        ctx.fillRect(x, y + TILE - 6, TILE, 6)
+   242→      }
+   243→      // Светлый верх
+   244→      if (r === 0 || g.grid[(r - 1) * g.cols + c] !== 1) {
+   245→        ctx.fillStyle = th.wallTop
+   246→        ctx.fillRect(x, y, TILE, 7)
+   247→        ctx.fillStyle = th.accent
+   248→        ctx.fillRect(x, y + 7, TILE, 2)
+   249→      }
+   250→      // Пятнышки/шов
+   251→      const h = hash2(c, r)
+   252→      ctx.fillStyle = th.wallDark
+   253→      ctx.globalAlpha = 0.35
+   254→      if (h < 0.3) {
+   255→        ctx.fillRect(x + 6 + h * 60, y + 12 + h * 40, 8, 4)
+   256→      } else if (h < 0.55) {
+   257→        ctx.fillRect(x + 24, y + 8 + h * 30, 4, 10)
+   258→      } else if (h < 0.75) {
+   259→        ctx.fillRect(x + 4, y + 22, 12, 3)
+   260→      }
+   261→      ctx.globalAlpha = 1
+   262→      // Тонкая рамка
+   263→      ctx.strokeStyle = 'rgba(0,0,0,0.18)'
+   264→      ctx.lineWidth = 1
+   265→      ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1)
+   266→    }
+   267→  }
+   268→}
+   269→
+   270→// ---------- Объекты ----------
+   271→
+   272→function drawBulbs(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   273→  for (const b of g.bulbs) {
+   274→    if (b.taken) continue
+   275→    const y = b.y + Math.sin(g.frame * 0.05 + b.phase) * 4
+   276→    const gl = ctx.createRadialGradient(b.x, y, 2, b.x, y, 22)
+   277→    gl.addColorStop(0, 'rgba(255,232,130,0.55)')
+   278→    gl.addColorStop(1, 'rgba(255,232,130,0)')
+   279→    ctx.fillStyle = gl
+   280→    ctx.fillRect(b.x - 22, y - 22, 44, 44)
+   281→
+   282→    ctx.fillStyle = '#fff6c9'
+   283→    ctx.strokeStyle = '#d9a441'
+   284→    ctx.lineWidth = 2
+   285→    ctx.beginPath()
+   286→    ctx.arc(b.x, y - 2, 8, 0, Math.PI * 2)
+   287→    ctx.fill()
+   288→    ctx.stroke()
+   289→    ctx.fillStyle = '#c8cdd2'
+   290→    rr(ctx, b.x - 4, y + 5, 8, 5, 1.5)
+   291→    ctx.fill()
+   292→    // Нить накала
+   293→    ctx.strokeStyle = '#e8b23d'
+   294→    ctx.lineWidth = 1.4
+   295→    ctx.beginPath()
+   296→    ctx.moveTo(b.x - 3, y + 1)
+   297→    ctx.quadraticCurveTo(b.x, y - 5, b.x + 3, y + 1)
+   298→    ctx.stroke()
+   299→    // Блик-звёздочка
+   300→    const a = 0.5 + 0.5 * Math.sin(g.frame * 0.1 + b.phase * 2)
+   301→    ctx.strokeStyle = `rgba(255,255,255,${0.35 + a * 0.5})`
+   302→    ctx.lineWidth = 1.6
+   303→    ctx.beginPath()
+   304→    ctx.moveTo(b.x + 6, y - 10)
+   305→    ctx.lineTo(b.x + 6, y - 16)
+   306→    ctx.moveTo(b.x + 3, y - 13)
+   307→    ctx.lineTo(b.x + 9, y - 13)
+   308→    ctx.stroke()
+   309→  }
+   310→}
+   311→
+   312→function drawLampCones(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   313→  for (const l of g.lamps) {
+   314→    drawLamp(ctx, g, l.x, l.y, l.on)
+   315→  }
+   316→}
+   317→
+   318→function drawLampGlows(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   319→  for (const l of g.lamps) {
+   320→    if (!l.on) continue
+   321→    const flicker = 1 + Math.sin(g.frame * 0.21 + l.x) * 0.06
+   322→    const gl = ctx.createRadialGradient(l.x, l.y + 8, 3, l.x, l.y + 8, 34)
+   323→    gl.addColorStop(0, `rgba(255,224,130,${0.4 * flicker})`)
+   324→    gl.addColorStop(1, 'rgba(255,224,130,0)')
+   325→    ctx.fillStyle = gl
+   326→    ctx.fillRect(l.x - 34, l.y - 26, 68, 68)
+   327→  }
+   328→}
+   329→
+   330→function drawLamp(
+   331→  ctx: CanvasRenderingContext2D,
+   332→  g: EnergoGame,
+   333→  x: number,
+   334→  y: number,
+   335→  on: boolean,
+   336→) {
+   337→  // Провод
+   338→  ctx.strokeStyle = 'rgba(30,28,26,0.85)'
+   339→  ctx.lineWidth = 2.5
+   340→  ctx.beginPath()
+   341→  ctx.moveTo(x, 0)
+   342→  ctx.lineTo(x, y - 14)
+   343→  ctx.stroke()
+   344→
+   345→  if (on) {
+   346→    const len = 420
+   347→    const flick = 0.16 + Math.sin(g.frame * 0.18 + x * 0.7) * 0.02
+   348→    const grad = ctx.createLinearGradient(0, y, 0, y + len)
+   349→    grad.addColorStop(0, `rgba(255,216,110,${flick + 0.1})`)
+   350→    grad.addColorStop(1, 'rgba(255,216,110,0)')
+   351→    ctx.fillStyle = grad
+   352→    ctx.beginPath()
+   353→    ctx.moveTo(x - 14, y + 6)
+   354→    ctx.lineTo(x + 14, y + 6)
+   355→    ctx.lineTo(x + 16 + len * 0.34, y + len)
+   356→    ctx.lineTo(x - 16 - len * 0.34, y + len)
+   357→    ctx.closePath()
+   358→    ctx.fill()
+   359→  }
+   360→
+   361→  // Плафон
+   362→  ctx.fillStyle = on ? '#4a4150' : '#4c4c52'
+   363→  ctx.beginPath()
+   364→  ctx.moveTo(x - 10, y - 14)
+   365→  ctx.lineTo(x + 10, y - 14)
+   366→  ctx.lineTo(x + 17, y + 2)
+   367→  ctx.lineTo(x - 17, y + 2)
+   368→  ctx.closePath()
+   369→  ctx.fill()
+   370→  ctx.strokeStyle = 'rgba(0,0,0,0.35)'
+   371→  ctx.lineWidth = 1.5
+   372→  ctx.stroke()
+   373→
+   374→  // Лампочка
+   375→  ctx.fillStyle = on ? '#ffdf8a' : '#83838a'
+   376→  ctx.beginPath()
+   377→  ctx.arc(x, y + 7, 6, 0, Math.PI * 2)
+   378→  ctx.fill()
+   379→  if (on) {
+   380→    ctx.strokeStyle = 'rgba(255,255,255,0.8)'
+   381→    ctx.lineWidth = 1.4
+   382→    ctx.beginPath()
+   383→    ctx.arc(x - 1.5, y + 5.5, 2.6, Math.PI * 0.9, Math.PI * 1.6)
+   384→    ctx.stroke()
+   385→  }
+   386→}
+   387→
+   388→function drawSwitches(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   389→  for (const s of g.switches) {
+   390→    const x = s.x
+   391→    const y = s.y
+   392→    // Корпус
+   393→    ctx.fillStyle = '#3c3c44'
+   394→    rr(ctx, x - 14, y - 36, 28, 36, 4)
+   395→    ctx.fill()
+   396→    ctx.strokeStyle = '#23232a'
+   397→    ctx.lineWidth = 2
+   398→    ctx.stroke()
+   399→    // Индикатор
+   400→    ctx.fillStyle = s.flipped ? '#63d471' : '#ff5a4e'
+   401→    ctx.beginPath()
+   402→    ctx.arc(x, y - 29, 3, 0, Math.PI * 2)
+   403→    ctx.fill()
+   404→    // Рычаг
+   405→    ctx.strokeStyle = '#c8cdd2'
+   406→    ctx.lineWidth = 4.5
+   407→    ctx.lineCap = 'round'
+   408→    ctx.beginPath()
+   409→    ctx.moveTo(x, y - 16)
+   410→    ctx.lineTo(x, s.flipped ? y - 7 : y - 25)
+   411→    ctx.stroke()
+   412→    ctx.fillStyle = s.flipped ? '#63d471' : '#ff5a4e'
+   413→    ctx.beginPath()
+   414→    ctx.arc(x, s.flipped ? y - 7 : y - 25, 4.2, 0, Math.PI * 2)
+   415→    ctx.fill()
+   416→    ctx.lineCap = 'butt'
+   417→
+   418→    if (!s.flipped) {
+   419→      // Подсказка — прыгающая стрелка
+   420→      const bob = Math.sin(g.frame * 0.12) * 3.5
+   421→      ctx.fillStyle = '#ffe873'
+   422→      ctx.beginPath()
+   423→      ctx.moveTo(x - 9, y - 50 + bob)
+   424→      ctx.lineTo(x + 9, y - 50 + bob)
+   425→      ctx.lineTo(x, y - 40 + bob)
+   426→      ctx.closePath()
+   427→      ctx.fill()
+   428→      ctx.strokeStyle = 'rgba(0,0,0,0.4)'
+   429→      ctx.lineWidth = 1.5
+   430→      ctx.stroke()
+   431→    }
+   432→  }
+   433→}
+   434→
+   435→function drawExit(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   436→  const x = g.exit.x
+   437→  const y = g.exit.y
+   438→  // Шкаф щитка
+   439→  ctx.fillStyle = '#2e4632'
+   440→  rr(ctx, x, y - 56, 36, 56, 5)
+   441→  ctx.fill()
+   442→  ctx.strokeStyle = '#1a2b1e'
+   443→  ctx.lineWidth = 2.5
+   444→  ctx.stroke()
+   445→  ctx.fillStyle = '#3c5a42'
+   446→  rr(ctx, x + 5, y - 50, 26, 44, 3)
+   447→  ctx.fill()
+   448→  // Молния
+   449→  ctx.fillStyle = '#ffe14d'
+   450→  ctx.beginPath()
+   451→  ctx.moveTo(x + 21, y - 47)
+   452→  ctx.lineTo(x + 12, y - 32)
+   453→  ctx.lineTo(x + 18, y - 32)
+   454→  ctx.lineTo(x + 14, y - 19)
+   455→  ctx.lineTo(x + 25, y - 36)
+   456→  ctx.lineTo(x + 18, y - 36)
+   457→  ctx.closePath()
+   458→  ctx.fill()
+   459→  ctx.strokeStyle = 'rgba(120,90,0,0.6)'
+   460→  ctx.lineWidth = 1
+   461→  ctx.stroke()
+   462→  // Лампочка-индикатор
+   463→  const blink = Math.sin(g.frame * 0.09) > 0
+   464→  ctx.fillStyle = blink ? '#8df08a' : '#3f6b3f'
+   465→  ctx.beginPath()
+   466→  ctx.arc(x + 18, y - 9, 3.2, 0, Math.PI * 2)
+   467→  ctx.fill()
+   468→  // Стрелка
+   469→  const bob = Math.sin(g.frame * 0.1) * 4
+   470→  ctx.fillStyle = '#8df08a'
+   471→  ctx.beginPath()
+   472→  ctx.moveTo(x + 8, y - 72 + bob)
+   473→  ctx.lineTo(x + 28, y - 72 + bob)
+   474→  ctx.lineTo(x + 18, y - 61 + bob)
+   475→  ctx.closePath()
+   476→  ctx.fill()
+   477→}
+   478→
+   479→function drawHazards(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   480→  for (const h of g.hazards) {
+   481→    const x = h.x
+   482→    const y = h.y
+   483→    ctx.fillStyle = '#3a3a3f'
+   484→    rr(ctx, x - 14, y - 30, 28, 30, 4)
+   485→    ctx.fill()
+   486→    ctx.strokeStyle = '#202024'
+   487→    ctx.lineWidth = 2
+   488→    ctx.stroke()
+   489→    ctx.fillStyle = '#17171a'
+   490→    rr(ctx, x - 6, y - 22, 4, 12, 2)
+   491→    ctx.fill()
+   492→    rr(ctx, x + 3, y - 22, 4, 12, 2)
+   493→    ctx.fill()
+   494→    // Искры
+   495→    if ((g.frame + Math.floor(x)) % 110 < 9) {
+   496→      const gl = ctx.createRadialGradient(x, y - 20, 2, x, y - 20, 26)
+   497→      gl.addColorStop(0, 'rgba(255,230,120,0.7)')
+   498→      gl.addColorStop(1, 'rgba(255,230,120,0)')
+   499→      ctx.fillStyle = gl
+   500→      ctx.fillRect(x - 26, y - 46, 52, 52)
+   501→      ctx.strokeStyle = '#ffe14d'
+   502→      ctx.lineWidth = 2
+   503→      ctx.beginPath()
+   504→      ctx.moveTo(x - 6, y - 24)
+   505→      ctx.lineTo(x + 2, y - 34)
+   506→      ctx.lineTo(x - 3, y - 36)
+   507→      ctx.lineTo(x + 6, y - 46)
+   508→      ctx.stroke()
+   509→    }
+   510→  }
+   511→}
+   512→
+   513→function drawPlats(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   514→  for (const pl of g.plats) {
+   515→    const grad = ctx.createLinearGradient(0, pl.y, 0, pl.y + pl.h)
+   516→    grad.addColorStop(0, '#9aa89e')
+   517→    grad.addColorStop(1, '#5f6d64')
+   518→    ctx.fillStyle = grad
+   519→    rr(ctx, pl.x, pl.y, pl.w, pl.h, 4)
+   520→    ctx.fill()
+   521→    ctx.strokeStyle = '#3d4a42'
+   522→    ctx.lineWidth = 2
+   523→    ctx.stroke()
+   524→    // Стрелки движения
+   525→    ctx.fillStyle = 'rgba(255,255,255,0.55)'
+   526→    const wob = Math.sin(g.frame * 0.08) * 2
+   527→    ctx.beginPath()
+   528→    ctx.moveTo(pl.x + 12 + wob, pl.y + 4)
+   529→    ctx.lineTo(pl.x + 20 + wob, pl.y + 8)
+   530→    ctx.lineTo(pl.x + 12 + wob, pl.y + 12)
+   531→    ctx.closePath()
+   532→    ctx.fill()
+   533→    ctx.beginPath()
+   534→    ctx.moveTo(pl.x + pl.w - 12 - wob, pl.y + 4)
+   535→    ctx.lineTo(pl.x + pl.w - 20 - wob, pl.y + 8)
+   536→    ctx.lineTo(pl.x + pl.w - 12 - wob, pl.y + 12)
+   537→    ctx.closePath()
+   538→    ctx.fill()
+   539→  }
+   540→}
+   541→
+   542→// ---------- Персонажи ----------
+   543→
+   544→function drawPlayer(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   545→  const p = g.player
+   546→  if (p.invuln > 0 && Math.floor(g.frame / 4) % 2 === 0) {
+   547→    ctx.globalAlpha = 0.35
+   548→  }
+   549→  const cx = p.x + p.w / 2
+   550→  const feetY = p.y + p.h
+   551→  const sy = p.squash
+   552→  const sx = 2 - p.squash
+   553→
+   554→  ctx.save()
+   555→  ctx.translate(cx, feetY)
+   556→  ctx.scale(sx, sy)
+   557→
+   558→  // Плащ
+   559→  const wave = Math.sin(g.frame * 0.25) * 3
+   560→  ctx.fillStyle = '#3fae5f'
+   561→  ctx.beginPath()
+   562→  ctx.moveTo(-2, -30)
+   563→  ctx.quadraticCurveTo(-16 - wave, -22, -12 - wave, -4)
+   564→  ctx.lineTo(-4, -8)
+   565→  ctx.closePath()
+   566→  ctx.fill()
+   567→
+   568→  // Свечение
+   569→  const gl = ctx.createRadialGradient(0, -24, 4, 0, -24, 30)
+   570→  gl.addColorStop(0, 'rgba(255,232,140,0.4)')
+   571→  gl.addColorStop(1, 'rgba(255,232,140,0)')
+   572→  ctx.fillStyle = gl
+   573→  ctx.fillRect(-30, -54, 60, 60)
+   574→
+   575→  // Ножки
+   576→  const run = p.onGround ? Math.sin(p.anim) * 5 : 2
+   577→  const lift = p.onGround ? Math.abs(Math.cos(p.anim)) * 2 : 0
+   578→  ctx.strokeStyle = '#7a5a18'
+   579→  ctx.lineWidth = 4
+   580→  ctx.lineCap = 'round'
+   581→  ctx.beginPath()
+   582→  ctx.moveTo(-4, -8)
+   583→  ctx.lineTo(-4 - run, -1 - lift)
+   584→  ctx.moveTo(4, -8)
+   585→  ctx.lineTo(4 + run, -1 - (p.onGround ? 0 : 2))
+   586→  ctx.stroke()
+   587→  ctx.lineCap = 'butt'
+   588→
+   589→  // Цоколь
+   590→  ctx.fillStyle = '#b9bec4'
+   591→  rr(ctx, -7, -14, 14, 8, 2)
+   592→  ctx.fill()
+   593→  ctx.strokeStyle = '#8b9198'
+   594→  ctx.lineWidth = 1
+   595→  ctx.beginPath()
+   596→  ctx.moveTo(-7, -11)
+   597→  ctx.lineTo(7, -11)
+   598→  ctx.moveTo(-7, -8.5)
+   599→  ctx.lineTo(7, -8.5)
+   600→  ctx.stroke()
+   601→
+   602→  // Колба
+   603→  const bg = ctx.createRadialGradient(-4, -30, 3, 0, -25, 16)
+   604→  bg.addColorStop(0, '#fffbd8')
+   605→  bg.addColorStop(0.55, '#ffe37a')
+   606→  bg.addColorStop(1, '#f5b93c')
+   607→  ctx.fillStyle = bg
+   608→  ctx.beginPath()
+   609→  ctx.arc(0, -25, 13.5, 0, Math.PI * 2)
+   610→  ctx.fill()
+   611→  ctx.strokeStyle = 'rgba(140,95,15,0.55)'
+   612→  ctx.lineWidth = 1.6
+   613→  ctx.stroke()
+   614→
+   615→  // Лицо
+   616→  const fx = p.facing * 2.5
+   617→  if (p.blink > 0) {
+   618→    ctx.strokeStyle = '#4a3208'
+   619→    ctx.lineWidth = 1.8
+   620→    ctx.beginPath()
+   621→    ctx.moveTo(fx - 6.5, -28)
+   622→    ctx.lineTo(fx - 2.5, -28)
+   623→    ctx.moveTo(fx + 2.5, -28)
+   624→    ctx.lineTo(fx + 6.5, -28)
+   625→    ctx.stroke()
+   626→  } else {
+   627→    const py = clampF(p.vy * 0.22, -2, 2)
+   628→    ctx.fillStyle = '#fff'
+   629→    ctx.beginPath()
+   630→    ctx.arc(fx - 4.5, -28, 3.1, 0, Math.PI * 2)
+   631→    ctx.arc(fx + 4.5, -28, 3.1, 0, Math.PI * 2)
+   632→    ctx.fill()
+   633→    ctx.fillStyle = '#33230a'
+   634→    ctx.beginPath()
+   635→    ctx.arc(fx - 4.5 + p.facing * 1.1, -28 + py, 1.7, 0, Math.PI * 2)
+   636→    ctx.arc(fx + 4.5 + p.facing * 1.1, -28 + py, 1.7, 0, Math.PI * 2)
+   637→    ctx.fill()
+   638→  }
+   639→  // Улыбка
+   640→  ctx.strokeStyle = '#4a3208'
+   641→  ctx.lineWidth = 1.6
+   642→  ctx.beginPath()
+   643→  ctx.arc(fx, -22, 4.2, 0.15 * Math.PI, 0.85 * Math.PI)
+   644→  ctx.stroke()
+   645→  // Щёчки
+   646→  ctx.fillStyle = 'rgba(255,120,110,0.45)'
+   647→  ctx.beginPath()
+   648→  ctx.arc(fx - 7.5, -22.5, 2.2, 0, Math.PI * 2)
+   649→  ctx.arc(fx + 7.5, -22.5, 2.2, 0, Math.PI * 2)
+   650→  ctx.fill()
+   651→
+   652→  ctx.restore()
+   653→  ctx.globalAlpha = 1
+   654→}
+   655→
+   656→function drawVampires(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   657→  for (const v of g.vampires) {
+   658→    if (v.dead) continue
+   659→    const cx = v.x + v.w / 2
+   660→    const bob = Math.sin(v.anim * 2.2) * 2
+   661→    const cy = v.y + 18 + bob
+   662→    const dir = Math.sign(v.vx) || 1
+   663→
+   664→    // Плащ
+   665→    const flap = Math.sin(v.anim * 3) * 4
+   666→    ctx.fillStyle = '#7a1f2b'
+   667→    ctx.beginPath()
+   668→    ctx.moveTo(cx, cy - 12)
+   669→    ctx.quadraticCurveTo(cx - 20, cy - 2 + flap, cx - 16, cy + 16)
+   670→    ctx.lineTo(cx, cy + 10)
+   671→    ctx.lineTo(cx + 16, cy + 16)
+   672→    ctx.quadraticCurveTo(cx + 20, cy - 2 - flap, cx, cy - 12)
+   673→    ctx.closePath()
+   674→    ctx.fill()
+   675→    ctx.strokeStyle = '#4d1219'
+   676→    ctx.lineWidth = 1.5
+   677→    ctx.stroke()
+   678→
+   679→    // Тело
+   680→    const bg = ctx.createRadialGradient(cx - 4, cy - 6, 3, cx, cy, 18)
+   681→    bg.addColorStop(0, '#55406b')
+   682→    bg.addColorStop(1, '#33244a')
+   683→    ctx.fillStyle = bg
+   684→    ctx.beginPath()
+   685→    ctx.ellipse(cx, cy + 2, 13, 16, 0, 0, Math.PI * 2)
+   686→    ctx.fill()
+   687→    // Ушки-крылышки
+   688→    ctx.fillStyle = '#33244a'
+   689→    ctx.beginPath()
+   690→    ctx.moveTo(cx - 12, cy - 8)
+   691→    ctx.lineTo(cx - 20, cy - 16 - flap)
+   692→    ctx.lineTo(cx - 8, cy - 14)
+   693→    ctx.closePath()
+   694→    ctx.moveTo(cx + 12, cy - 8)
+   695→    ctx.lineTo(cx + 20, cy - 16 + flap)
+   696→    ctx.lineTo(cx + 8, cy - 14)
+   697→    ctx.closePath()
+   698→    ctx.fill()
+   699→
+   700→    // Глаза
+   701→    const ex = dir * 2
+   702→    ctx.fillStyle = '#ff4d40'
+   703→    ctx.beginPath()
+   704→    ctx.arc(cx - 4.5 + ex, cy - 6, 2.6, 0, Math.PI * 2)
+   705→    ctx.arc(cx + 4.5 + ex, cy - 6, 2.6, 0, Math.PI * 2)
+   706→    ctx.fill()
+   707→    ctx.fillStyle = '#2a0d0d'
+   708→    ctx.beginPath()
+   709→    ctx.arc(cx - 4.5 + ex + dir, cy - 6, 1.1, 0, Math.PI * 2)
+   710→    ctx.arc(cx + 4.5 + ex + dir, cy - 6, 1.1, 0, Math.PI * 2)
+   711→    ctx.fill()
+   712→    // Брови
+   713→    ctx.strokeStyle = '#1d0f22'
+   714→    ctx.lineWidth = 1.8
+   715→    ctx.beginPath()
+   716→    ctx.moveTo(cx - 8 + ex, cy - 11)
+   717→    ctx.lineTo(cx - 2 + ex, cy - 8.6)
+   718→    ctx.moveTo(cx + 8 + ex, cy - 11)
+   719→    ctx.lineTo(cx + 2 + ex, cy - 8.6)
+   720→    ctx.stroke()
+   721→
+   722→    // Рот с клыками
+   723→    ctx.fillStyle = '#1d0f22'
+   724→    ctx.beginPath()
+   725→    ctx.ellipse(cx + ex, cy + 3, 4.5, 3, 0, 0, Math.PI * 2)
+   726→    ctx.fill()
+   727→    ctx.fillStyle = '#fff'
+   728→    ctx.beginPath()
+   729→    ctx.moveTo(cx - 3.4 + ex, cy + 1.6)
+   730→    ctx.lineTo(cx - 1.6 + ex, cy + 1.6)
+   731→    ctx.lineTo(cx - 2.5 + ex, cy + 4.4)
+   732→    ctx.closePath()
+   733→    ctx.moveTo(cx + 1.6 + ex, cy + 1.6)
+   734→    ctx.lineTo(cx + 3.4 + ex, cy + 1.6)
+   735→    ctx.lineTo(cx + 2.5 + ex, cy + 4.4)
+   736→    ctx.closePath()
+   737→    ctx.fill()
+   738→  }
+   739→}
+   740→
+   741→function drawPhantoms(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   742→  for (const f of g.phantoms) {
+   743→    if (f.dead) continue
+   744→    const t = g.frame * 0.06
+   745→    // Шлейф
+   746→    ctx.globalAlpha = 0.18
+   747→    ctx.fillStyle = '#d8f3dd'
+   748→    ctx.beginPath()
+   749→    ctx.arc(f.x - Math.cos(f.phase) * 10, f.y + 4, 12, 0, Math.PI * 2)
+   750→    ctx.fill()
+   751→    ctx.globalAlpha = 0.82 + Math.sin(t * 2) * 0.08
+   752→
+   753→    // Тело призрака
+   754→    ctx.fillStyle = '#e2f6e6'
+   755→    ctx.beginPath()
+   756→    ctx.arc(f.x, f.y - 2, 14, Math.PI, 0)
+   757→    const wob = Math.sin(t) * 2
+   758→    ctx.quadraticCurveTo(f.x + 14, f.y + 8, f.x + 11, f.y + 14 + wob)
+   759→    ctx.quadraticCurveTo(f.x + 7, f.y + 9, f.x + 3.5, f.y + 15 - wob)
+   760→    ctx.quadraticCurveTo(f.x, f.y + 10, f.x - 3.5, f.y + 15 + wob)
+   761→    ctx.quadraticCurveTo(f.x - 7, f.y + 9, f.x - 11, f.y + 14 - wob)
+   762→    ctx.quadraticCurveTo(f.x - 14, f.y + 8, f.x - 14, f.y - 2)
+   763→    ctx.closePath()
+   764→    ctx.fill()
+   765→    ctx.strokeStyle = 'rgba(110,160,120,0.7)'
+   766→    ctx.lineWidth = 1.5
+   767→    ctx.stroke()
+   768→
+   769→    // Глаза
+   770→    ctx.fillStyle = '#274032'
+   771→    ctx.beginPath()
+   772→    ctx.ellipse(f.x - 5, f.y - 4, 2.6, 4, 0, 0, Math.PI * 2)
+   773→    ctx.ellipse(f.x + 5, f.y - 4, 2.6, 4, 0, 0, Math.PI * 2)
+   774→    ctx.fill()
+   775→    // Рот-oh
+   776→    ctx.beginPath()
+   777→    ctx.ellipse(f.x, f.y + 4, 2.6, 3.6, 0, 0, Math.PI * 2)
+   778→    ctx.fill()
+   779→    ctx.globalAlpha = 1
+   780→  }
+   781→}
+   782→
+   783→// ---------- Частицы ----------
+   784→
+   785→function drawParticles(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   786→  for (const q of g.particles) {
+   787→    const a = q.life / q.maxLife
+   788→    ctx.globalAlpha = Math.max(0, Math.min(1, a))
+   789→    if (q.kind === 'star') {
+   790→      ctx.save()
+   791→      ctx.translate(q.x, q.y)
+   792→      ctx.rotate(q.life * 0.2)
+   793→      ctx.fillStyle = q.color
+   794→      const s = q.size * 1.6
+   795→      ctx.beginPath()
+   796→      for (let i = 0; i < 8; i++) {
+   797→        const r = i % 2 === 0 ? s : s * 0.42
+   798→        const ang = (i / 8) * Math.PI * 2
+   799→        const px = Math.cos(ang) * r
+   800→        const py = Math.sin(ang) * r
+   801→        if (i === 0) ctx.moveTo(px, py)
+   802→        else ctx.lineTo(px, py)
+   803→      }
+   804→      ctx.closePath()
+   805→      ctx.fill()
+   806→      ctx.restore()
+   807→    } else if (q.kind === 'spark') {
+   808→      ctx.strokeStyle = q.color
+   809→      ctx.lineWidth = q.size * 0.6
+   810→      ctx.beginPath()
+   811→      ctx.moveTo(q.x, q.y)
+   812→      ctx.lineTo(q.x - q.vx * 2.4, q.y - q.vy * 2.4)
+   813→      ctx.stroke()
+   814→    } else {
+   815→      ctx.fillStyle = q.color
+   816→      ctx.beginPath()
+   817→      ctx.arc(q.x, q.y, q.size * (q.kind === 'poof' ? 1 + (1 - a) * 1.6 : 1), 0, Math.PI * 2)
+   818→      ctx.fill()
+   819→    }
+   820→  }
+   821→  ctx.globalAlpha = 1
+   822→}
+   823→
+   824→// ---------- HUD ----------
+   825→
+   826→function fnt(size: number, weight = 700): string {
+   827→  return `${weight} ${size}px Nunito, "Segoe UI", system-ui, sans-serif`
+   828→}
+   829→
+   830→function drawHUD(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   831→  // Энергия
+   832→  const bx = 46
+   833→  const by = 16
+   834→  const bw = 220
+   835→  const bh = 20
+   836→  const pct = Math.max(0, Math.min(1, g.energy / 100))
+   837→  const low = pct < 0.25
+   838→
+   839→  ctx.fillStyle = 'rgba(8,14,8,0.55)'
+   840→  rr(ctx, bx - 6, by - 4, bw + 26, bh + 8, 10)
+   841→  ctx.fill()
+   842→
+   843→  // Молния
+   844→  ctx.fillStyle = '#ffe14d'
+   845→  ctx.beginPath()
+   846→  ctx.moveTo(bx + 6, by - 1)
+   847→  ctx.lineTo(bx - 2, by + 10)
+   848→  ctx.lineTo(bx + 4, by + 10)
+   849→  ctx.lineTo(bx + 1, by + 18)
+   850→  ctx.lineTo(bx + 10, by + 7)
+   851→  ctx.lineTo(bx + 4, by + 7)
+   852→  ctx.closePath()
+   853→  ctx.fill()
+   854→
+   855→  rr(ctx, bx + 14, by, bw, bh, 8)
+   856→  ctx.fillStyle = 'rgba(0,0,0,0.45)'
+   857→  ctx.fill()
+   858→  if (pct > 0.01) {
+   859→    const hue = 4 + pct * 106 // 4=красный … 110=зелёный
+   860→    const grad = ctx.createLinearGradient(0, by, 0, by + bh)
+   861→    grad.addColorStop(0, `hsl(${hue} 80% 58%)`)
+   862→    grad.addColorStop(1, `hsl(${hue} 75% 42%)`)
+   863→    ctx.fillStyle = grad
+   864→    rr(ctx, bx + 14, by, Math.max(6, bw * pct), bh, 8)
+   865→    ctx.fill()
+   866→  }
+   867→  if (low) {
+   868→    ctx.strokeStyle = `rgba(255,70,60,${0.55 + 0.4 * Math.sin(g.frame * 0.25)})`
+   869→    ctx.lineWidth = 2.5
+   870→    rr(ctx, bx + 14, by, bw, bh, 8)
+   871→    ctx.stroke()
+   872→  }
+   873→  ctx.fillStyle = 'rgba(255,255,255,0.92)'
+   874→  ctx.font = fnt(11, 800)
+   875→  ctx.textBaseline = 'middle'
+   876→  ctx.textAlign = 'left'
+   877→  ctx.fillText('ЭНЕРГИЯ', bx + 22, by + bh / 2 + 0.5)
+   878→
+   879→  // Счёт и лампочки (справа)
+   880→  ctx.textAlign = 'right'
+   881→  ctx.font = fnt(20, 800)
+   882→  ctx.fillStyle = '#fff'
+   883→  ctx.fillText(String(g.score), VIEW_W - 48, 26)
+   884→  // Звезда
+   885→  ctx.fillStyle = '#ffd94d'
+   886→  drawStar(ctx, VIEW_W - 34, 24, 9, 5)
+   887→  // Лампочки
+   888→  ctx.font = fnt(15, 800)
+   889→  ctx.fillStyle = '#ffe37a'
+   890→  ctx.fillText(`${g.bulbsGot}/${g.bulbsTotal}`, VIEW_W - 48, 48)
+   891→  ctx.fillStyle = '#fff6c9'
+   892→  ctx.beginPath()
+   893→  ctx.arc(VIEW_W - 88, 44, 5.5, 0, Math.PI * 2)
+   894→  ctx.fill()
+   895→  ctx.fillStyle = '#c8cdd2'
+   896→  rr(ctx, VIEW_W - 91, 48.5, 6, 3.5, 1)
+   897→  ctx.fill()
+   898→
+   899→  // Название уровня
+   900→  const def = LEVELS[g.levelIndex]
+   901→  ctx.font = fnt(13, 800)
+   902→  const label = `${def.subtitle} · ${def.name.toUpperCase()}`
+   903→  const tw = ctx.measureText(label).width
+   904→  ctx.fillStyle = 'rgba(8,14,8,0.45)'
+   905→  rr(ctx, VIEW_W / 2 - tw / 2 - 12, 14, tw + 24, 24, 12)
+   906→  ctx.fill()
+   907→  ctx.fillStyle = 'rgba(255,255,255,0.9)'
+   908→  ctx.textAlign = 'center'
+   909→  ctx.fillText(label, VIEW_W / 2, 27)
+   910→
+   911→  // Красная виньетка при низкой энергии
+   912→  if (pct < 0.3 && g.phase === 'playing') {
+   913→    const a = (1 - pct / 0.3) * (0.28 + 0.1 * Math.sin(g.frame * 0.2))
+   914→    const vg = ctx.createRadialGradient(
+   915→      VIEW_W / 2,
+   916→      VIEW_H / 2,
+   917→      VIEW_H * 0.32,
+   918→      VIEW_W / 2,
+   919→      VIEW_H / 2,
+   920→      VIEW_H * 0.75,
+   921→    )
+   922→    vg.addColorStop(0, 'rgba(200,30,20,0)')
+   923→    vg.addColorStop(1, `rgba(200,30,20,${Math.max(0, a)})`)
+   924→    ctx.fillStyle = vg
+   925→    ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+   926→  }
+   927→}
+   928→
+   929→function drawStar(
+   930→  ctx: CanvasRenderingContext2D,
+   931→  cx: number,
+   932→  cy: number,
+   933→  outer: number,
+   934→  inner: number,
+   935→) {
+   936→  ctx.beginPath()
+   937→  for (let i = 0; i < 10; i++) {
+   938→    const r = i % 2 === 0 ? outer : inner
+   939→    const ang = -Math.PI / 2 + (i / 10) * Math.PI * 2
+   940→    const px = cx + Math.cos(ang) * r
+   941→    const py = cy + Math.sin(ang) * r
+   942→    if (i === 0) ctx.moveTo(px, py)
+   943→    else ctx.lineTo(px, py)
+   944→  }
+   945→  ctx.closePath()
+   946→  ctx.fill()
+   947→}
+   948→
+   949→function clampF(v: number, min: number, max: number): number {
+   950→  return v < min ? min : v > max ? max : v
+   951→}
+   952→
+   953→// ---------- Утилиты ----------
+   954→
+   955→function rr(
+   956→  ctx: CanvasRenderingContext2D,
+   957→  x: number,
+   958→  y: number,
+   959→  w: number,
+   960→  h: number,
+   961→  r: number,
+   962→) {
+   963→  const rad = Math.min(r, w / 2, h / 2)
+   964→  ctx.beginPath()
+   965→  ctx.moveTo(x + rad, y)
+   966→  ctx.arcTo(x + w, y, x + w, y + h, rad)
+   967→  ctx.arcTo(x + w, y + h, x, y + h, rad)
+   968→  ctx.arcTo(x, y + h, x, y, rad)
+   969→  ctx.arcTo(x, y, x + w, y, rad)
+   970→  ctx.closePath()
+   971→}
+   972→

@@ -74,15 +74,22 @@ export default function EnergoHeroGame() {
       },
     })
     gameRef.current = game
-    setIsTouch(
-      window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window,
-    )
-    try {
-      setBest(Number(localStorage.getItem('energohero-best') ?? '0') || 0)
-    } catch {
-      /* ignore */
-    }
+
+    // Отложенная инициализация некритичного UI-состояния (не блокирует эффект)
+    const raf = requestAnimationFrame(() => {
+      setIsTouch(
+        window.matchMedia('(pointer: coarse)').matches ||
+          'ontouchstart' in window ||
+          window.innerWidth < 768,
+      )
+      try {
+        setBest(Number(localStorage.getItem('energohero-best') ?? '0') || 0)
+      } catch {
+        /* ignore */
+      }
+    })
     return () => {
+      cancelAnimationFrame(raf)
       game.destroy()
       gameRef.current = null
     }
@@ -116,7 +123,8 @@ export default function EnergoHeroGame() {
   // Enter — основное действие на оверлеях
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Enter' && e.code !== 'NumpadEnter') return
+      if (e.code !== 'Enter' && e.code !== 'NumpadEnter' && e.key !== 'Enter')
+        return
       if (phase === 'menu') act('start')
       else if (phase === 'intro') act('begin')
       else if (phase === 'complete') act('next')
@@ -158,10 +166,10 @@ export default function EnergoHeroGame() {
       </header>
 
       <main className="w-full max-w-[1080px]">
-        <div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl border-2 border-emerald-950 shadow-[0_0_60px_rgba(52,168,83,0.15)] sm:border-4">
+        <div className="relative aspect-[16/9] max-md:aspect-[4/5] w-full overflow-hidden rounded-2xl border-2 border-emerald-950 bg-[#0b120c] shadow-[0_0_60px_rgba(52,168,83,0.15)] sm:border-4">
           <canvas
             ref={canvasRef}
-            className="absolute inset-0 h-full w-full"
+            className="absolute inset-0 h-full w-full object-contain"
             aria-label="Игровое поле ЭнергоГероя"
           />
 
@@ -200,7 +208,7 @@ export default function EnergoHeroGame() {
                 разбушевались ЭнергоВампиры и везде горит лишний свет. Верни
                 дому зелёный баланс за 3 уровня!
               </p>
-              <div className="mt-5 grid grid-cols-2 gap-2 text-left sm:gap-3 lg:grid-cols-4">
+              <div className="mt-3 grid grid-cols-2 gap-2 text-left sm:mt-5 sm:gap-3 lg:grid-cols-4">
                 {HOW_TO.map((h) => (
                   <div
                     key={h.title}
@@ -216,7 +224,7 @@ export default function EnergoHeroGame() {
                   </div>
                 ))}
               </div>
-              <div className="mt-5 flex flex-col items-center gap-2">
+              <div className="mt-4 flex flex-col items-center gap-2 sm:mt-5">
                 <Button
                   onClick={() => act('start')}
                   size="lg"
@@ -224,10 +232,12 @@ export default function EnergoHeroGame() {
                 >
                   <Play className="mr-2 h-5 w-5" /> ИГРАТЬ
                 </Button>
-                <p className="text-xs text-emerald-200/50">
-                  ← → или A D — движение · Space / ↑ — прыжок · P — пауза ·
-                  прыгай врагам на голову
-                </p>
+                {!isTouch && (
+                  <p className="text-xs text-emerald-200/50">
+                    ← → или A D — движение · Space / ↑ — прыжок · P — пауза ·
+                    прыгай врагам на голову
+                  </p>
+                )}
                 {best > 0 && (
                   <p className="flex items-center gap-1 text-xs font-bold text-amber-300/90">
                     <Star className="h-3.5 w-3.5 fill-amber-300" /> Рекорд: {best}
@@ -423,8 +433,8 @@ export default function EnergoHeroGame() {
 
 function Overlay({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#050a06]/72 p-4 backdrop-blur-[3px]">
-      <div className="w-full max-w-2xl text-center">{children}</div>
+    <div className="absolute inset-0 z-10 flex overflow-y-auto bg-[#050a06]/72 p-4 backdrop-blur-[3px]">
+      <div className="m-auto w-full max-w-2xl py-2 text-center">{children}</div>
     </div>
   )
 }
