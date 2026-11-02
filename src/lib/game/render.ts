@@ -39,6 +39,30 @@ const THEMES: Record<ThemeName, Theme> = {
     wallDark: '#2b362e',
     accent: '#6d8a6f',
   },
+  living: {
+    skyTop: '#22304f',
+    skyBot: '#4a5f80',
+    wall: '#6b4a35',
+    wallTop: '#8a6248',
+    wallDark: '#523728',
+    accent: '#a5754f',
+  },
+  attic: {
+    skyTop: '#33222a',
+    skyBot: '#6b4a4a',
+    wall: '#7a4a3a',
+    wallTop: '#9a6450',
+    wallDark: '#5c3628',
+    accent: '#b5825f',
+  },
+  office: {
+    skyTop: '#1a2230',
+    skyBot: '#2e3a4e',
+    wall: '#46536b',
+    wallTop: '#5d6d8a',
+    wallDark: '#333e52',
+    accent: '#7688a8',
+  },
 }
 
 export function render(ctx: CanvasRenderingContext2D, g: EnergoGame) {
@@ -91,10 +115,16 @@ function drawBackground(
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, VIEW_W, VIEW_H)
 
+  // Одна и та же «комната» рисуется одним из трёх художников фона,
+  // палитру задаёт тема уровня.
   const name = LEVELS[g.levelIndex].theme
-  if (name === 'bedroom') drawBedroomBg(ctx, g)
-  else if (name === 'kitchen') drawKitchenBg(ctx, g)
-  else drawBasementBg(ctx, g)
+  const painter =
+    name === 'bedroom' || name === 'attic'
+      ? drawBedroomBg
+      : name === 'kitchen' || name === 'living'
+        ? drawKitchenBg
+        : drawBasementBg
+  painter(ctx, g)
 }
 
 function wrapX(i: number, camX: number, k: number, span: number): number {
@@ -555,13 +585,14 @@ function drawPlayer(ctx: CanvasRenderingContext2D, g: EnergoGame) {
   ctx.translate(cx, feetY)
   ctx.scale(sx, sy)
 
-  // Плащ
+  // Плащ: рисуется за спиной, развевается против направления взгляда
   const wave = Math.sin(g.frame * 0.25) * 3
+  const f = p.facing
   ctx.fillStyle = '#3fae5f'
   ctx.beginPath()
-  ctx.moveTo(-2, -30)
-  ctx.quadraticCurveTo(-16 - wave, -22, -12 - wave, -4)
-  ctx.lineTo(-4, -8)
+  ctx.moveTo(-2 * f, -30)
+  ctx.quadraticCurveTo((-16 - wave) * f, -22, (-12 - wave) * f, -4)
+  ctx.lineTo(-4 * f, -8)
   ctx.closePath()
   ctx.fill()
 
@@ -890,10 +921,10 @@ function drawHUD(ctx: CanvasRenderingContext2D, g: EnergoGame) {
   ctx.fillText(`${g.bulbsGot}/${g.bulbsTotal}`, VIEW_W - 48, 48)
   ctx.fillStyle = '#fff6c9'
   ctx.beginPath()
-  ctx.arc(VIEW_W - 88, 44, 5.5, 0, Math.PI * 2)
+  ctx.arc(VIEW_W - 96, 44, 5.5, 0, Math.PI * 2)
   ctx.fill()
   ctx.fillStyle = '#c8cdd2'
-  rr(ctx, VIEW_W - 91, 48.5, 6, 3.5, 1)
+  rr(ctx, VIEW_W - 99, 48.5, 6, 3.5, 1)
   ctx.fill()
 
   // Название уровня

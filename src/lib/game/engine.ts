@@ -256,7 +256,7 @@ export class EnergoGame {
 
   // ---------- Загрузка уровня ----------
 
-  private loadLevel(index: number) {
+  loadLevel(index: number) {
     const def = LEVELS[index]
     this.levelIndex = index
     this.levelStartScore = this.score

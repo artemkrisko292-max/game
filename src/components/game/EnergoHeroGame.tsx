@@ -76,6 +76,8 @@ export default function EnergoHeroGame() {
       },
     })
     gameRef.current = game
+    // Отладочный хук (используется автотестами: __energo.loadLevel(n))
+    ;(window as unknown as { __energo?: EnergoGame }).__energo = game
 
     // Отложенная инициализация некритичного UI-состояния (не блокирует эффект)
     const raf = requestAnimationFrame(() => {
@@ -212,7 +214,7 @@ export default function EnergoHeroGame() {
               <p className="mx-auto mt-3 max-w-xl text-sm text-emerald-100/80 sm:text-base">
                 Ты — <b>Вжик</b>, храбрая светодиодная лампочка. В доме
                 разбушевались ЭнергоВампиры и везде горит лишний свет. Верни
-                дому зелёный баланс за 3 уровня!
+                дому зелёный баланс за 20 уровней!
               </p>
               <div className="mt-3 grid grid-cols-2 gap-2 text-left sm:mt-5 sm:gap-3 lg:grid-cols-4">
                 {HOW_TO.map((h) => (

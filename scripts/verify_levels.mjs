@@ -208,6 +208,16 @@ function verify(idx) {
     }
   }
   const issues = []
+  // Структурные проверки
+  const lampA = def.map.filter((row) => row.includes('L')).length
+  const lampB = def.map.reduce((n, row) => n + (row.match(/M/g) ?? []).length, 0)
+  const sw = (def.map.join('').match(/S/g) ?? []).length
+  const tw = (def.map.join('').match(/T/g) ?? []).length
+  const pCount = (def.map.join('').match(/P/g) ?? []).length
+  if (pCount !== 1) issues.push(`  ✗ Точек появления P: ${pCount} (нужно 1)`)
+  if (sw > 1 || tw > 1) issues.push(`  ✗ Рубильников S=${sw}, T=${tw} (допускается по одному)`)
+  if (lampA > 0 !== sw > 0) issues.push('  ✗ Лампы A без рубильника S (или наоборот)')
+  if (lampB > 0 !== tw > 0) issues.push('  ✗ Лампы B без рубильника T (или наоборот)')
   const items = [
     ...w.bulbs.map((b) => ({ id: 'B' + b.i, label: `Лампочка B (${Math.round(b.x)},${Math.round(b.y)})` })),
     ...w.switches.map((s) => ({ id: 'S' + s.i, label: `Рубильник ${s.ch} (${Math.round(s.x)},${Math.round(s.y)})` })),
