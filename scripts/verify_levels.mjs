@@ -1,6 +1,6 @@
 // Проверка геометрии уровней «ЭнергоГероя»:
 // симулирует физику игрока 1-в-1 с engine.ts и BFS-ом по поверхностям
-// проверяет, что все лампочки, рубильники и выход достижимы.
+// проверяет, что все лампочки, рубильники, предохранители и выход достижимы.
 // Запуск: bun scripts/verify_levels.mjs
 
 import { LEVELS } from '../src/lib/game/levels.ts'
@@ -23,7 +23,14 @@ function buildWorld(def) {
   const rows = raw.length
   const cols = Math.max(...raw.map((r) => r.length))
   const grid = new Uint8Array(cols * rows)
-  const ents = { bulbs: [], switches: [], exits: [], spawns: [], plats: [] }
+  const ents = {
+    bulbs: [],
+    switches: [],
+    exits: [],
+    spawns: [],
+    plats: [],
+    fuses: [],
+  }
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const ch = c < raw[r].length ? raw[r][c] : '.'
@@ -33,8 +40,15 @@ function buildWorld(def) {
       else if (ch === 'P') ents.spawns.push({ x: x + TILE / 2 - 13, y: y + TILE - 34 })
       else if (ch === 'B') ents.bulbs.push({ x: x + TILE / 2, y: y + TILE / 2, i: ents.bulbs.length })
       else if (ch === 'S' || ch === 'T') ents.switches.push({ x: x + TILE / 2, y: y + TILE, i: ents.switches.length, ch })
+      else if (ch === 'K') ents.fuses.push({ x: x + TILE / 2, y: y + TILE / 2, i: ents.fuses.length })
       else if (ch === 'E') ents.exits.push({ x: x + 2, y: y + TILE })
-      else if (ch === 'W') ents.plats.push({ x: x - 20, y: y + 8, w: 120, h: 16, cx: x - 20, amp: 85 })
+      else if (ch === 'W')
+        ents.plats.push({ x: x - 20, y: y + 8, w: 120, h: 16, cx: x - 20, by: y + 8, amp: 85, vertical: false, pi: ents.plats.length })
+      else if (ch === 'U')
+        ents.plats.push({ x: x - 20, y: y + 8, w: 120, h: 16, cx: x - 20, by: y + 8, amp: 72, vertical: true, pi: ents.plats.length })
+      else if (ch === 'C')
+        // осыпающаяся плита: считаем статичной (проверяем достижимость, пока цела)
+        ents.plats.push({ x, y, w: 40, h: 14, cx: x, by: y, amp: 0, vertical: false, pi: ents.plats.length })
     }
   }
   return { grid, cols, rows, ...ents, worldW: cols * TILE, worldH: rows * TILE }
@@ -61,7 +75,7 @@ function circleRect(cx, cy, r, rx, ry, rw, rh) {
   return dx * dx + dy * dy <= r * r
 }
 
-// Поверхности: верхние грани сплошных горизонтальных серий + платформы W (фазы)
+// Поверхности: верхние грани сплошных горизонтальных серий + платформы (фазы)
 function surfaces(w) {
   const out = []
   for (let r = 0; r < w.rows; r++) {
@@ -74,14 +88,20 @@ function surfaces(w) {
       } else c++
     }
   }
-  // движущиеся платформы: 8 фаз как статические поверхности
-  w.plats.forEach((p, pi) => {
+  // платформы: 8 фаз как статические поверхности
+  // горизонтальные двигаются по x, вертикальные — по y
+  for (const p of w.plats) {
     for (let k = 0; k < 8; k++) {
       const phase = (k / 8) * Math.PI * 2
-      const x = p.cx + Math.sin(phase) * p.amp
-      out.push({ kind: 'plat', pi, x0: x, x1: x + p.w, y: p.y })
+      if (p.vertical) {
+        const y = p.by + Math.sin(phase) * p.amp
+        out.push({ kind: 'plat', pi: p.pi, x0: p.x, x1: p.x + p.w, y })
+      } else {
+        const x = p.cx + Math.sin(phase) * p.amp
+        out.push({ kind: 'plat', pi: p.pi, x0: x, x1: x + p.w, y: p.y })
+      }
     }
-  })
+  }
   return out
 }
 
@@ -99,6 +119,8 @@ function flight(w, sx, syFeet, vx0, dir, holdJump, maxFrames = 240) {
     for (const s of w.switches)
       if (px < s.x + 15 && px + PW > s.x - 15 && py < s.y && py + PH > s.y - 38)
         touched.add('S' + s.i)
+    for (const fu of w.fuses)
+      if (circleRect(fu.x, fu.y, 16, px, py, PW, PH)) touched.add('K' + fu.i)
     for (const e of w.exits)
       if (px < e.x + 36 && px + PW > e.x && py < e.y && py + PH > e.y - 56)
         touched.add('E' + e.i)
@@ -157,7 +179,7 @@ function flight(w, sx, syFeet, vx0, dir, holdJump, maxFrames = 240) {
 function keyOf(surf) {
   return surf.kind === 'tile'
     ? `t${surf.y}:${surf.x0}-${surf.x1}`
-    : `p${surf.pi}@${Math.round(surf.x0)}`
+    : `p${surf.pi}@${Math.round(surf.x0)}:${Math.round(surf.y)}`
 }
 
 function verify(idx) {
@@ -214,13 +236,16 @@ function verify(idx) {
   const sw = (def.map.join('').match(/S/g) ?? []).length
   const tw = (def.map.join('').match(/T/g) ?? []).length
   const pCount = (def.map.join('').match(/P/g) ?? []).length
+  const eCount = (def.map.join('').match(/E/g) ?? []).length
   if (pCount !== 1) issues.push(`  ✗ Точек появления P: ${pCount} (нужно 1)`)
+  if (eCount !== 1) issues.push(`  ✗ Выходов E: ${eCount} (нужно 1)`)
   if (sw > 1 || tw > 1) issues.push(`  ✗ Рубильников S=${sw}, T=${tw} (допускается по одному)`)
   if (lampA > 0 !== sw > 0) issues.push('  ✗ Лампы A без рубильника S (или наоборот)')
   if (lampB > 0 !== tw > 0) issues.push('  ✗ Лампы B без рубильника T (или наоборот)')
   const items = [
     ...w.bulbs.map((b) => ({ id: 'B' + b.i, label: `Лампочка B (${Math.round(b.x)},${Math.round(b.y)})` })),
     ...w.switches.map((s) => ({ id: 'S' + s.i, label: `Рубильник ${s.ch} (${Math.round(s.x)},${Math.round(s.y)})` })),
+    ...w.fuses.map((fu) => ({ id: 'K' + fu.i, label: `Предохранитель K (${Math.round(fu.x)},${Math.round(fu.y)})` })),
     ...w.exits.map((e) => ({ id: 'E' + e.i, label: `Выход E (${Math.round(e.x)},${Math.round(e.y)})` })),
   ]
   for (const it of items)

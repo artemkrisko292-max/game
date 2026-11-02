@@ -6,7 +6,10 @@ import { Sfx } from './audio'
 import { render } from './render'
 import type {
   BulbE,
+  CrumbE,
+  DroneE,
   ExitE,
+  FuseE,
   GameCallbacks,
   HazardE,
   LampE,
@@ -15,6 +18,7 @@ import type {
   Phantom,
   Player,
   Phase,
+  RunnerE,
   RunSummary,
   Snapshot,
   SwitchE,
@@ -45,8 +49,16 @@ const LAMP_CONE_LEN = 420
 const DMG_VAMPIRE = 18
 const DMG_PHANTOM = 12
 const DMG_SOCKET = 15
+const DMG_SPIKES = 14
+const DMG_RUNNER = 22
+const DMG_DRONE = 15
 const DMG_FALL = 12
 const HEAL_BULB = 8
+const SCORE_RUNNER = 150
+const SCORE_DRONE = 120
+const SCORE_FUSE = 250
+const CRUMBLE_DELAY = 30 // кадров от вставания до обвала (~0.5 с)
+const CRUMBLE_RESPAWN = 250 // кадров до восстановления плиты
 
 interface InputState {
   left: boolean
@@ -113,8 +125,12 @@ export class EnergoGame {
   hazards: HazardE[] = []
   vampires: Vampire[] = []
   phantoms: Phantom[] = []
+  runners: RunnerE[] = []
+  drones: DroneE[] = []
+  crumbs: CrumbE[] = []
+  fuses: FuseE[] = []
   plats: MovPlat[] = []
-  exit: ExitE = { x: 0, y: 0 }
+  exit: ExitE = { x: 0, y: 0, locked: false }
   particles: Particle[] = []
   camX = 0
   camY = 0
@@ -127,6 +143,8 @@ export class EnergoGame {
   bulbsTotal = 0
   switchesGot = 0
   switchesTotal = 0
+  fusesGot = 0
+  fusesTotal = 0
   runBulbs = 0
   runSwitches = 0
   runBulbsTotal = 0
@@ -214,6 +232,7 @@ export class EnergoGame {
       levelName: def.name,
       levelSubtitle: def.subtitle,
       hint: def.hint,
+      badge: def.badge ?? null,
       score: this.score,
       energy: this.energy,
       result: this.result,
@@ -273,9 +292,13 @@ export class EnergoGame {
     this.hazards = []
     this.vampires = []
     this.phantoms = []
+    this.runners = []
+    this.drones = []
+    this.crumbs = []
+    this.fuses = []
     this.plats = []
     this.particles = []
-    this.exit = { x: 0, y: 0 }
+    this.exit = { x: 0, y: 0, locked: false }
 
     let px = 80
     let py = 80
@@ -324,13 +347,15 @@ export class EnergoGame {
               flipped: false,
             })
             break
-          case 'V':
+          case 'V': {
+            // Скорость вампиров растёт с номером уровня
+            const vSpeed = Math.min(1.9, 1.15 + this.levelIndex * 0.035)
             this.vampires.push({
               x: x + 5,
               y: y + TILE - 38,
               w: 30,
               h: 38,
-              vx: 1.15,
+              vx: vSpeed,
               vy: 0,
               minX: x + TILE / 2 - 220,
               maxX: x + TILE / 2 + 220,
@@ -339,20 +364,73 @@ export class EnergoGame {
               onGround: false,
             })
             break
-          case 'F':
+          }
+          case 'G':
+            this.runners.push({
+              x: x + 5,
+              y: y + TILE - 38,
+              w: 30,
+              h: 38,
+              vx: Math.min(3.4, 2.45 + this.levelIndex * 0.03),
+              vy: 0,
+              minX: x + TILE / 2 - 280,
+              maxX: x + TILE / 2 + 280,
+              dead: false,
+              anim: (c % 7) * 0.3,
+              onGround: false,
+            })
+            break
+          case 'Z':
+            this.drones.push({
+              x: x + 4,
+              y: y + 6,
+              w: 32,
+              h: 26,
+              vx: 1.7 + (c % 3) * 0.25,
+              vy: 1.15,
+              dead: false,
+              anim: (c % 5) * 0.4,
+              onGround: false,
+            })
+            break
+          case 'F': {
+            const fSpeed =
+              0.019 + (c % 5) * 0.0015 + Math.min(0.009, this.levelIndex * 0.0005)
             this.phantoms.push({
               cx: x + TILE / 2,
               cy: y + TILE / 2,
               x: x + TILE / 2,
               y: y + TILE / 2,
               amp: 150,
-              speed: 0.019 + (c % 5) * 0.0015,
+              speed: fSpeed,
               phase: (c % 11) * 0.55,
               dead: false,
             })
             break
+          }
           case 'X':
-            this.hazards.push({ x: x + TILE / 2, y: y + TILE })
+            this.hazards.push({ x: x + TILE / 2, y: y + TILE, kind: 'socket' })
+            break
+          case '^':
+            this.hazards.push({ x: x + TILE / 2, y: y + TILE, kind: 'spikes' })
+            break
+          case 'C':
+            this.crumbs.push({
+              x,
+              y,
+              w: TILE,
+              h: 14,
+              state: 0,
+              timer: 0,
+            })
+            break
+          case 'K':
+            this.fuses.push({
+              x: x + TILE / 2,
+              y: y + TILE / 2,
+              taken: false,
+              phase: (c + r) * 0.6,
+            })
             break
           case 'W':
             this.plats.push({
@@ -361,14 +439,33 @@ export class EnergoGame {
               w: 120,
               h: 16,
               cx: x - 20,
+              by: y + 8,
               amp: 85,
               speed: 0.021,
-              phase: 0,
+              phase: (c % 3) * 0.9,
               dx: 0,
+              dy: 0,
+              axis: 'x',
+            })
+            break
+          case 'U':
+            this.plats.push({
+              x: x - 20,
+              y: y + 8,
+              w: 120,
+              h: 16,
+              cx: x - 20,
+              by: y + 8,
+              amp: 72,
+              speed: 0.026,
+              phase: (c % 4) * 1.15,
+              dx: 0,
+              dy: 0,
+              axis: 'y',
             })
             break
           case 'E':
-            this.exit = { x: x + 2, y: y + TILE }
+            this.exit = { x: x + 2, y: y + TILE, locked: false }
             break
         }
       }
@@ -378,8 +475,12 @@ export class EnergoGame {
     this.worldH = this.rows * TILE
     this.bulbsGot = 0
     this.switchesGot = 0
+    this.fusesGot = 0
     this.bulbsTotal = this.bulbs.length
     this.switchesTotal = this.switches.length
+    this.fusesTotal = this.fuses.length
+    // Если на уровне есть предохранители — выход заперт, пока не собраны
+    this.exit.locked = this.fusesTotal > 0
     this.runBulbsTotal = LEVELS.reduce(
       (s, l) => s + countChar(l.map, 'B'),
       0,
@@ -563,12 +664,20 @@ export class EnergoGame {
     // Гравитация
     p.vy = Math.min(p.vy + GRAV, 14)
 
-    // Движущиеся платформы
+    // Движущиеся платформы (горизонтальные и вертикальные)
     for (const pl of this.plats) {
       pl.phase += pl.speed
-      const nx = pl.cx + Math.sin(pl.phase) * pl.amp
-      pl.dx = nx - pl.x
-      pl.x = nx
+      if (pl.axis === 'x') {
+        const nx = pl.cx + Math.sin(pl.phase) * pl.amp
+        pl.dx = nx - pl.x
+        pl.dy = 0
+        pl.x = nx
+      } else {
+        const ny = pl.by + Math.sin(pl.phase) * pl.amp
+        pl.dy = ny - pl.y
+        pl.dx = 0
+        pl.y = ny
+      }
     }
 
     // Движение и коллизии
@@ -608,8 +717,11 @@ export class EnergoGame {
       p.vy = 0
     }
 
-    this.updateVampires()
-    this.updatePhantoms()
+    this.updateWalkers(this.vampires, DMG_VAMPIRE, 100)
+    this.updateWalkers(this.runners, DMG_RUNNER, SCORE_RUNNER)
+    this.updateDrones()
+    this.updateCrumbs()
+    this.updateFuses()
     this.updatePickups()
     this.updateSwitches()
     this.updateHazards()
@@ -681,6 +793,21 @@ export class EnergoGame {
           e.x += pl.dx
         }
       }
+      // Осыпающиеся плиты: та же «односторонняя» коллизия сверху
+      for (const c of this.crumbs) {
+        if (c.state === 2) continue
+        const feet = e.y + e.h
+        if (
+          feet >= c.y &&
+          prevFeet <= c.y + 6 &&
+          e.x + e.w > c.x + 2 &&
+          e.x < c.x + c.w - 2
+        ) {
+          e.y = c.y - e.h
+          e.vy = 0
+          e.onGround = true
+        }
+      }
     } else {
       if (this.rectHitsSolid(e.x, e.y, e.w, e.h)) {
         e.y = Math.floor(e.y / TILE) * TILE + TILE + EPS
@@ -691,11 +818,12 @@ export class EnergoGame {
 
   // ---------- Сущности ----------
 
-  private updateVampires() {
+  /** Наземные ходячие враги (вампиры и гонцы). */
+  private updateWalkers(list: Vampire[], dmg: number, stompScore: number) {
     const p = this.player
-    for (const v of this.vampires) {
+    for (const v of list) {
       if (v.dead) continue
-      v.anim += 0.08
+      v.anim += Math.abs(v.vx) * 0.06
       v.vy = Math.min(v.vy + GRAV, 12)
       const oldVx = v.vx
       this.moveX(v, v.vx)
@@ -718,13 +846,108 @@ export class EnergoGame {
         if (p.vy > 2 && p.y + p.h - v.y < 22) {
           v.dead = true
           p.vy = -9.5
-          this.score += 100
+          this.score += stompScore
           this.shake = 6
           this.spawnParticles(v.x + v.w / 2, v.y + v.h / 2, 14, 'poof')
           this.sfx.stomp()
         } else {
-          this.damage(DMG_VAMPIRE, p.x < v.x + v.w / 2 ? -1 : 1)
+          this.damage(dmg, p.x < v.x + v.w / 2 ? -1 : 1)
         }
+      }
+    }
+  }
+
+  /** Дроны-пылесосы: летают по диагонали, отскакивая от стен. */
+  private updateDrones() {
+    const p = this.player
+    for (const d of this.drones) {
+      if (d.dead) continue
+      d.anim += 0.12
+      const oldVx = d.vx
+      this.moveX(d, d.vx)
+      if (d.vx === 0 && oldVx !== 0) d.vx = -oldVx
+
+      const oldVy = d.vy
+      this.moveY(d, d.vy, d.y + d.h)
+      if (d.vy === 0 && oldVy !== 0) d.vy = -oldVy // пол или потолок
+
+      // Границы мира: не даём дрону улететь в пустоту
+      if (d.x <= 0) {
+        d.x = 0
+        d.vx = Math.abs(d.vx)
+      } else if (d.x + d.w >= this.worldW) {
+        d.x = this.worldW - d.w
+        d.vx = -Math.abs(d.vx)
+      }
+      if (d.y <= 0) {
+        d.y = 0
+        d.vy = Math.abs(d.vy)
+      } else if (d.y + d.h >= this.worldH) {
+        d.y = this.worldH - d.h
+        d.vy = -Math.abs(d.vy)
+      }
+
+      if (p.invuln <= 0 && rectsOverlap(p, d)) {
+        if (p.vy > 2 && p.y + p.h - d.y < 20) {
+          d.dead = true
+          p.vy = -9.5
+          this.score += SCORE_DRONE
+          this.shake = 6
+          this.spawnParticles(d.x + d.w / 2, d.y + d.h / 2, 12, 'poof')
+          this.sfx.stomp()
+        } else {
+          this.damage(DMG_DRONE, p.x < d.x + d.w / 2 ? -1 : 1)
+        }
+      }
+    }
+  }
+
+  /** Осыпающиеся плиты: разрушаются под игроком и восстанавливаются. */
+  private updateCrumbs() {
+    const p = this.player
+    for (const c of this.crumbs) {
+      if (c.state === 2) {
+        c.timer--
+        if (c.timer <= 0) {
+          c.state = 0
+          c.timer = 0
+        }
+        continue
+      }
+      const standing =
+        p.vy >= 0 &&
+        p.x + p.w > c.x + 3 &&
+        p.x < c.x + c.w - 3 &&
+        Math.abs(p.y + p.h - c.y) < 4
+      if (c.state === 0 && standing) {
+        c.state = 1
+        c.timer = CRUMBLE_DELAY
+      } else if (c.state === 1) {
+        c.timer--
+        if (c.timer <= 0) {
+          c.state = 2
+          c.timer = CRUMBLE_RESPAWN
+          this.spawnParticles(c.x + c.w / 2, c.y + 6, 11, 'dust')
+          this.sfx.crumble()
+        }
+      }
+    }
+  }
+
+  /** Предохранители: снимают замок с выхода. */
+  private updateFuses() {
+    const p = this.player
+    for (const fu of this.fuses) {
+      if (fu.taken) continue
+      const bobY = fu.y + Math.sin(this.frame * 0.05 + fu.phase) * 4
+      if (circleRect(fu.x, bobY, 16, p)) {
+        fu.taken = true
+        this.fusesGot++
+        this.score += SCORE_FUSE
+        this.exit.locked = this.fusesGot < this.fusesTotal
+        this.shake = 3
+        this.spawnParticles(fu.x, bobY, 14, 'spark')
+        this.sfx.unlock()
       }
     }
   }
@@ -811,7 +1034,14 @@ export class EnergoGame {
     const p = this.player
     if (p.invuln > 0) return
     for (const h of this.hazards) {
-      if (circleRect(h.x, h.y - 14, 15, p)) {
+      if (h.kind === 'spikes') {
+        const box = { x: h.x - 16, y: h.y - 20, w: 32, h: 20 }
+        if (rectsOverlap(p, box)) {
+          this.damage(DMG_SPIKES, p.x < h.x ? -1 : 1)
+          this.spawnParticles(h.x, h.y - 10, 8, 'spark')
+          break
+        }
+      } else if (circleRect(h.x, h.y - 14, 15, p)) {
         this.damage(DMG_SOCKET, p.x < h.x ? -1 : 1)
         this.spawnParticles(h.x, h.y - 16, 12, 'spark')
         break
@@ -822,32 +1052,44 @@ export class EnergoGame {
   private updateExit() {
     const p = this.player
     const box = { x: this.exit.x, y: this.exit.y - 56, w: 36, h: 56 }
-    if (rectsOverlap(p, box)) {
-      const bonus = Math.round(this.energy) * 5
-      this.score += bonus
-      this.result = {
-        levelName: LEVELS[this.levelIndex].name,
-        energy: Math.round(this.energy),
-        bonus,
-        bulbs: this.bulbsGot,
-        bulbsTotal: this.bulbsTotal,
-        switches: this.switchesGot,
-        switchesTotal: this.switchesTotal,
-        score: this.score,
+    if (!rectsOverlap(p, box)) return
+    // Заперт: нужен предохранитель
+    if (this.exit.locked) {
+      if (this.frame % 55 === 0) {
+        this.sfx.deny()
+        this.spawnParticles(this.exit.x + 18, this.exit.y - 40, 4, 'spark')
       }
-      this.shake = 4
-      this.spawnParticles(p.x + p.w / 2, p.y, 16, 'star')
-      this.sfx.win()
-      if (this.levelIndex + 1 >= LEVELS.length) {
-        this.finishRun()
-      } else {
-        this.setPhase('complete')
-      }
+      return
+    }
+    const bonus = Math.round(this.energy) * 5
+    this.score += bonus
+    this.result = {
+      levelName: LEVELS[this.levelIndex].name,
+      energy: Math.round(this.energy),
+      bonus,
+      bulbs: this.bulbsGot,
+      bulbsTotal: this.bulbsTotal,
+      switches: this.switchesGot,
+      switchesTotal: this.switchesTotal,
+      fuses: this.fusesGot,
+      fusesTotal: this.fusesTotal,
+      score: this.score,
+    }
+    this.shake = 4
+    this.spawnParticles(p.x + p.w / 2, p.y, 16, 'star')
+    this.sfx.win()
+    if (this.levelIndex + 1 >= LEVELS.length) {
+      this.finishRun()
+    } else {
+      this.setPhase('complete')
     }
   }
 
   private updateEnergy() {
-    this.energy -= (DRAIN_BASE + this.lampDrain()) * STEP
+    // Сложность растёт с номером уровня: энергия тает всё быстрее
+    const mul = 1 + this.levelIndex * 0.05
+    this.energy -=
+      (DRAIN_BASE * mul + this.lampDrain() * (0.8 + mul * 0.2)) * STEP
     if (this.energy <= 0) {
       this.energy = 0
       this.sfx.lose()

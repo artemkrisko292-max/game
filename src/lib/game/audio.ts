@@ -70,6 +70,21 @@ export class Sfx {
     const notes = [523, 659, 784, 1047]
     notes.forEach((f, i) => this.tone(f, f, 0.18, 'triangle', 0.13, i * 0.11))
   }
+  /** Дверь заперта: короткий низкий «отказ». */
+  deny() {
+    this.tone(140, 110, 0.12, 'square', 0.09)
+    this.tone(110, 90, 0.14, 'square', 0.08, 0.1)
+  }
+  /** Предохранитель вставлен: восходящий аккорд. */
+  unlock() {
+    const notes = [440, 554, 659, 880]
+    notes.forEach((f, i) => this.tone(f, f, 0.12, 'square', 0.08, i * 0.07))
+  }
+  /** Плита осыпалась: шумовой обвал. */
+  crumble() {
+    this.tone(180, 45, 0.3, 'sawtooth', 0.11)
+    this.tone(90, 40, 0.22, 'square', 0.07, 0.05)
+  }
   lose() {
     const notes = [320, 230, 150, 95]
     notes.forEach((f, i) =>

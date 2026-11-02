@@ -89,9 +89,13 @@ export function render(ctx: CanvasRenderingContext2D, g: EnergoGame) {
   drawExit(ctx, g)
   drawLampCones(ctx, g)
   drawBulbs(ctx, g)
+  drawFuses(ctx, g)
   drawPlats(ctx, g)
+  drawCrumbs(ctx, g)
   drawVampires(ctx, g)
+  drawRunners(ctx, g)
   drawPhantoms(ctx, g)
+  drawDrones(ctx, g)
   drawPlayer(ctx, g)
   drawParticles(ctx, g)
   drawLampGlows(ctx, g)
@@ -466,17 +470,17 @@ function drawExit(ctx: CanvasRenderingContext2D, g: EnergoGame) {
   const x = g.exit.x
   const y = g.exit.y
   // Шкаф щитка
-  ctx.fillStyle = '#2e4632'
+  ctx.fillStyle = g.exit.locked ? '#4a3530' : '#2e4632'
   rr(ctx, x, y - 56, 36, 56, 5)
   ctx.fill()
   ctx.strokeStyle = '#1a2b1e'
   ctx.lineWidth = 2.5
   ctx.stroke()
-  ctx.fillStyle = '#3c5a42'
+  ctx.fillStyle = g.exit.locked ? '#5c443c' : '#3c5a42'
   rr(ctx, x + 5, y - 50, 26, 44, 3)
   ctx.fill()
   // Молния
-  ctx.fillStyle = '#ffe14d'
+  ctx.fillStyle = g.exit.locked ? '#8a8a8a' : '#ffe14d'
   ctx.beginPath()
   ctx.moveTo(x + 21, y - 47)
   ctx.lineTo(x + 12, y - 32)
@@ -491,25 +495,75 @@ function drawExit(ctx: CanvasRenderingContext2D, g: EnergoGame) {
   ctx.stroke()
   // Лампочка-индикатор
   const blink = Math.sin(g.frame * 0.09) > 0
-  ctx.fillStyle = blink ? '#8df08a' : '#3f6b3f'
+  ctx.fillStyle = g.exit.locked
+    ? blink
+      ? '#ff6a5a'
+      : '#6b3a35'
+    : blink
+      ? '#8df08a'
+      : '#3f6b3f'
   ctx.beginPath()
   ctx.arc(x + 18, y - 9, 3.2, 0, Math.PI * 2)
   ctx.fill()
-  // Стрелка
+
   const bob = Math.sin(g.frame * 0.1) * 4
-  ctx.fillStyle = '#8df08a'
-  ctx.beginPath()
-  ctx.moveTo(x + 8, y - 72 + bob)
-  ctx.lineTo(x + 28, y - 72 + bob)
-  ctx.lineTo(x + 18, y - 61 + bob)
-  ctx.closePath()
-  ctx.fill()
+  if (g.exit.locked) {
+    // Замок вместо стрелки
+    ctx.strokeStyle = '#ffb14d'
+    ctx.lineWidth = 2.6
+    ctx.beginPath()
+    ctx.arc(x + 18, y - 68 + bob, 4.5, Math.PI, 0)
+    ctx.stroke()
+    ctx.fillStyle = '#ffb14d'
+    rr(ctx, x + 11.5, y - 68 + bob, 13, 10.5, 2)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'
+    ctx.lineWidth = 1.4
+    ctx.stroke()
+  } else {
+    // Стрелка
+    ctx.fillStyle = '#8df08a'
+    ctx.beginPath()
+    ctx.moveTo(x + 8, y - 72 + bob)
+    ctx.lineTo(x + 28, y - 72 + bob)
+    ctx.lineTo(x + 18, y - 61 + bob)
+    ctx.closePath()
+    ctx.fill()
+  }
 }
 
 function drawHazards(ctx: CanvasRenderingContext2D, g: EnergoGame) {
   for (const h of g.hazards) {
     const x = h.x
     const y = h.y
+    if (h.kind === 'spikes') {
+      // Шипы из старой арматуры — торчат из пола
+      const sg = ctx.createLinearGradient(0, y - 18, 0, y)
+      sg.addColorStop(0, '#c3ccd4')
+      sg.addColorStop(1, '#5d666e')
+      ctx.fillStyle = sg
+      ctx.beginPath()
+      for (let i = 0; i < 4; i++) {
+        const bx = x - 18 + i * 12
+        ctx.moveTo(bx, y)
+        ctx.lineTo(bx + 5.5, y - 17 - (i % 2) * 4)
+        ctx.lineTo(bx + 11, y)
+      }
+      ctx.closePath()
+      ctx.fill()
+      ctx.strokeStyle = '#33393f'
+      ctx.lineWidth = 1.4
+      ctx.stroke()
+      // Предупреждающие искорки
+      if ((g.frame + Math.floor(x)) % 140 < 7) {
+        const gl = ctx.createRadialGradient(x, y - 12, 2, x, y - 12, 22)
+        gl.addColorStop(0, 'rgba(255,120,90,0.55)')
+        gl.addColorStop(1, 'rgba(255,120,90,0)')
+        ctx.fillStyle = gl
+        ctx.fillRect(x - 22, y - 34, 44, 44)
+      }
+      continue
+    }
     ctx.fillStyle = '#3a3a3f'
     rr(ctx, x - 14, y - 30, 28, 30, 4)
     ctx.fill()
@@ -551,21 +605,115 @@ function drawPlats(ctx: CanvasRenderingContext2D, g: EnergoGame) {
     ctx.strokeStyle = '#3d4a42'
     ctx.lineWidth = 2
     ctx.stroke()
-    // Стрелки движения
+    // Стрелки движения: у вертикальных платформ — вверх/вниз
     ctx.fillStyle = 'rgba(255,255,255,0.55)'
     const wob = Math.sin(g.frame * 0.08) * 2
-    ctx.beginPath()
-    ctx.moveTo(pl.x + 12 + wob, pl.y + 4)
-    ctx.lineTo(pl.x + 20 + wob, pl.y + 8)
-    ctx.lineTo(pl.x + 12 + wob, pl.y + 12)
-    ctx.closePath()
+    if (pl.axis === 'y') {
+      const midX = pl.x + pl.w / 2
+      ctx.beginPath()
+      ctx.moveTo(midX - 5, pl.y + 12 - wob)
+      ctx.lineTo(midX, pl.y + 4 - wob)
+      ctx.lineTo(midX + 5, pl.y + 12 - wob)
+      ctx.closePath()
+      ctx.fill()
+      ctx.beginPath()
+      ctx.moveTo(midX - 5, pl.y + 4 + wob)
+      ctx.lineTo(midX, pl.y + 12 + wob)
+      ctx.lineTo(midX + 5, pl.y + 4 + wob)
+      ctx.closePath()
+      ctx.fill()
+    } else {
+      ctx.beginPath()
+      ctx.moveTo(pl.x + 12 + wob, pl.y + 4)
+      ctx.lineTo(pl.x + 20 + wob, pl.y + 8)
+      ctx.lineTo(pl.x + 12 + wob, pl.y + 12)
+      ctx.closePath()
+      ctx.fill()
+      ctx.beginPath()
+      ctx.moveTo(pl.x + pl.w - 12 - wob, pl.y + 4)
+      ctx.lineTo(pl.x + pl.w - 20 - wob, pl.y + 8)
+      ctx.lineTo(pl.x + pl.w - 12 - wob, pl.y + 12)
+      ctx.closePath()
+      ctx.fill()
+    }
+  }
+}
+
+/** Осыпающиеся плиты: трясутся и рассыпаются под игроком. */
+function drawCrumbs(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+  for (const c of g.crumbs) {
+    if (c.state === 2) {
+      // Призрачный контур на месте разрушенной плиты
+      const blinkIn = c.timer < 70 && Math.floor(g.frame / 8) % 2 === 0
+      ctx.globalAlpha = blinkIn ? 0.4 : 0.16
+      ctx.strokeStyle = '#d8cfae'
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([5, 4])
+      ctx.strokeRect(c.x + 1, c.y + 1, c.w - 2, c.h - 2)
+      ctx.setLineDash([])
+      ctx.globalAlpha = 1
+      continue
+    }
+    const shake = c.state === 1 ? Math.sin(g.frame * 1.35) * 2 : 0
+    const grad = ctx.createLinearGradient(0, c.y, 0, c.y + c.h)
+    grad.addColorStop(0, '#a89a78')
+    grad.addColorStop(1, '#6e6450')
+    ctx.fillStyle = grad
+    rr(ctx, c.x + shake, c.y, c.w, c.h, 3)
     ctx.fill()
+    ctx.strokeStyle = '#4a4335'
+    ctx.lineWidth = 2
+    ctx.stroke()
+    // Трещины
+    ctx.strokeStyle = 'rgba(40,34,22,0.55)'
+    ctx.lineWidth = 1.2
     ctx.beginPath()
-    ctx.moveTo(pl.x + pl.w - 12 - wob, pl.y + 4)
-    ctx.lineTo(pl.x + pl.w - 20 - wob, pl.y + 8)
-    ctx.lineTo(pl.x + pl.w - 12 - wob, pl.y + 12)
-    ctx.closePath()
+    ctx.moveTo(c.x + 8 + shake, c.y + 3)
+    ctx.lineTo(c.x + 14 + shake, c.y + 9)
+    ctx.lineTo(c.x + 10 + shake, c.y + 13)
+    ctx.moveTo(c.x + 26 + shake, c.y + 2)
+    ctx.lineTo(c.x + 22 + shake, c.y + 8)
+    ctx.lineTo(c.x + 28 + shake, c.y + 13)
+    ctx.stroke()
+  }
+}
+
+/** Предохранители — ключи от запертого щитка. */
+function drawFuses(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+  for (const fu of g.fuses) {
+    if (fu.taken) continue
+    const bob = Math.sin(g.frame * 0.05 + fu.phase) * 4
+    const x = fu.x
+    const y = fu.y + bob
+    // Свечение
+    const gl = ctx.createRadialGradient(x, y, 3, x, y, 20)
+    gl.addColorStop(0, 'rgba(255,190,80,0.5)')
+    gl.addColorStop(1, 'rgba(255,190,80,0)')
+    ctx.fillStyle = gl
+    ctx.fillRect(x - 20, y - 20, 40, 40)
+    // Керамический корпус
+    ctx.fillStyle = '#f0e8d4'
+    rr(ctx, x - 6, y - 9, 12, 18, 4)
     ctx.fill()
+    ctx.strokeStyle = '#a89778'
+    ctx.lineWidth = 1.4
+    ctx.stroke()
+    // Металлические колпачки
+    ctx.fillStyle = '#c8cdd2'
+    rr(ctx, x - 5.5, y - 12, 11, 5, 1.5)
+    ctx.fill()
+    rr(ctx, x - 5.5, y + 7, 11, 5, 1.5)
+    ctx.fill()
+    // Тёплая нить внутри
+    const hot = 0.5 + Math.sin(g.frame * 0.15 + fu.phase) * 0.3
+    ctx.strokeStyle = `rgba(255,${Math.round(150 + hot * 80)},60,${0.7 + hot * 0.3})`
+    ctx.lineWidth = 1.8
+    ctx.beginPath()
+    ctx.moveTo(x, y - 7)
+    ctx.lineTo(x - 2.5, y - 3)
+    ctx.lineTo(x + 2.5, y + 1)
+    ctx.lineTo(x, y + 6)
+    ctx.stroke()
   }
 }
 
@@ -578,23 +726,68 @@ function drawPlayer(ctx: CanvasRenderingContext2D, g: EnergoGame) {
   }
   const cx = p.x + p.w / 2
   const feetY = p.y + p.h
-  const sy = p.squash
-  const sx = 2 - p.squash
 
   ctx.save()
   ctx.translate(cx, feetY)
-  ctx.scale(sx, sy)
+  ctx.scale(2 - p.squash, p.squash)
 
-  // Плащ: рисуется за спиной, развевается против направления взгляда
-  const wave = Math.sin(g.frame * 0.25) * 3
   const f = p.facing
-  ctx.fillStyle = '#3fae5f'
-  ctx.beginPath()
-  ctx.moveTo(-2 * f, -30)
-  ctx.quadraticCurveTo((-16 - wave) * f, -22, (-12 - wave) * f, -4)
-  ctx.lineTo(-4 * f, -8)
-  ctx.closePath()
-  ctx.fill()
+  const dir = -f // сторона, в которую течёт плащ (за спину)
+  const speed = Math.min(1, Math.abs(p.vx) / 4.2)
+  const air = !p.onGround
+
+  // ================= ПЛАЩ =================
+  // Течёт за спину, форма зависит от скорости, вертикали и порывов —
+  // при смене направления мгновенно оказывается по нужную сторону.
+  {
+    const wave = Math.sin(g.frame * 0.32) * (1.6 + speed * 2.6)
+    const flap = Math.sin(g.frame * 0.57 + 1) * 2.2
+    const lift = p.vy < -2 ? -7 : p.vy > 3 ? Math.min(9, p.vy * 0.85) : 0
+    const reach = 9 + speed * 11
+    ctx.save()
+    ctx.translate(0, -31)
+    const cg = ctx.createLinearGradient(0, -2, dir * reach * 1.7, 22)
+    cg.addColorStop(0, '#e14b41')
+    cg.addColorStop(0.55, '#b52f34')
+    cg.addColorStop(1, '#87202c')
+    ctx.fillStyle = cg
+    ctx.beginPath()
+    ctx.moveTo(dir * 2.5, -3)
+    ctx.quadraticCurveTo(
+      dir * reach * 0.85,
+      1 + flap * 0.5,
+      dir * (reach + wave),
+      9 + lift * 0.55 + flap,
+    )
+    ctx.quadraticCurveTo(
+      dir * reach * 0.6,
+      13 + lift * 0.8 + flap * 0.6,
+      dir * (reach * 0.45 + wave * 0.45),
+      15.5 + lift,
+    )
+    ctx.quadraticCurveTo(dir * 6, 19 + flap * 0.3, dir * 2, 23)
+    ctx.closePath()
+    ctx.fill()
+    // складка-тень
+    ctx.fillStyle = 'rgba(66,8,18,0.38)'
+    ctx.beginPath()
+    ctx.moveTo(dir * 2, 1)
+    ctx.quadraticCurveTo(
+      dir * reach * 0.5,
+      6 + flap * 0.4,
+      dir * (reach * 0.42 + wave * 0.4),
+      14 + lift,
+    )
+    ctx.quadraticCurveTo(dir * 4, 17, dir * 1.5, 21)
+    ctx.closePath()
+    ctx.fill()
+    // золотая застёжка у шеи
+    ctx.fillStyle = '#ffd34d'
+    ctx.beginPath()
+    ctx.arc(dir * 1.6, -2.2, 1.9, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
 
   // Свечение
   const gl = ctx.createRadialGradient(0, -24, 4, 0, -24, 30)
@@ -603,34 +796,81 @@ function drawPlayer(ctx: CanvasRenderingContext2D, g: EnergoGame) {
   ctx.fillStyle = gl
   ctx.fillRect(-30, -54, 60, 60)
 
-  // Ножки
-  const run = p.onGround ? Math.sin(p.anim) * 5 : 2
-  const lift = p.onGround ? Math.abs(Math.cos(p.anim)) * 2 : 0
-  ctx.strokeStyle = '#7a5a18'
-  ctx.lineWidth = 4
+  // Скоростные линии позади
+  if (speed > 0.55) {
+    ctx.strokeStyle = 'rgba(255,240,190,0.45)'
+    ctx.lineWidth = 1.6
+    for (let i = 0; i < 3; i++) {
+      const yy = -14 - i * 7
+      const len = 5 + speed * 8 + Math.sin(g.frame * 0.7 + i * 2.1) * 2
+      ctx.beginPath()
+      ctx.moveTo(dir * (13 + i * 2.5), yy)
+      ctx.lineTo(dir * (13 + i * 2.5 + len), yy)
+      ctx.stroke()
+    }
+  }
+
+  // ================= НОЖКИ В БОТИНКАХ =================
+  const step = air ? 0 : Math.sin(p.anim)
+  const legSwing = air ? (p.vy < 0 ? 2.4 : 1.2) : step * 5.5
+  ctx.strokeStyle = '#6b4a12'
+  ctx.lineWidth = 4.2
   ctx.lineCap = 'round'
+  // задняя нога
   ctx.beginPath()
-  ctx.moveTo(-4, -8)
-  ctx.lineTo(-4 - run, -1 - lift)
-  ctx.moveTo(4, -8)
-  ctx.lineTo(4 + run, -1 - (p.onGround ? 0 : 2))
+  ctx.moveTo(-3.5, -10)
+  ctx.lineTo(-3.5 - legSwing, -1.5 - (air ? 2.5 : Math.max(0, -step) * 2))
+  ctx.stroke()
+  // передняя нога
+  ctx.beginPath()
+  ctx.moveTo(3.5, -10)
+  ctx.lineTo(3.5 + legSwing, -1.5 - (air ? 1 : Math.max(0, step) * 2))
   ctx.stroke()
   ctx.lineCap = 'butt'
+  // ботинки (носок смотрит по направлению взгляда)
+  ctx.fillStyle = '#5d420f'
+  const bootX1 = -3.5 - legSwing
+  const bootY1 = -1.5 - (air ? 2.5 : Math.max(0, -step) * 2)
+  const bootX2 = 3.5 + legSwing
+  const bootY2 = -1.5 - (air ? 1 : Math.max(0, step) * 2)
+  rr(ctx, bootX1 - 3.2 + (f < 0 ? -2.2 : 0), bootY1 - 3.2, 8.4, 4.2, 2)
+  ctx.fill()
+  rr(ctx, bootX2 - 3.2 + (f < 0 ? -2.2 : 0), bootY2 - 3.2, 8.4, 4.2, 2)
+  ctx.fill()
 
-  // Цоколь
+  // ================= ЦОКОЛЬ-БРОНЯ =================
   ctx.fillStyle = '#b9bec4'
-  rr(ctx, -7, -14, 14, 8, 2)
+  rr(ctx, -7.5, -15, 15, 10.5, 2.5)
   ctx.fill()
   ctx.strokeStyle = '#8b9198'
   ctx.lineWidth = 1
   ctx.beginPath()
-  ctx.moveTo(-7, -11)
-  ctx.lineTo(7, -11)
-  ctx.moveTo(-7, -8.5)
-  ctx.lineTo(7, -8.5)
+  ctx.moveTo(-7.5, -12)
+  ctx.lineTo(7.5, -12)
+  ctx.moveTo(-7.5, -9.4)
+  ctx.lineTo(7.5, -9.4)
   ctx.stroke()
+  ctx.strokeStyle = '#7d838a'
+  ctx.lineWidth = 1.2
+  rr(ctx, -7.5, -15, 15, 10.5, 2.5)
+  ctx.stroke()
+  // Эмблема-молния на «груди»
+  ctx.fillStyle = '#f7b32b'
+  ctx.beginPath()
+  ctx.moveTo(1.6, -14.4)
+  ctx.lineTo(-2.2, -9.8)
+  ctx.lineTo(-0.2, -9.8)
+  ctx.lineTo(-1.6, -5.4)
+  ctx.lineTo(2.4, -10.6)
+  ctx.lineTo(0.4, -10.6)
+  ctx.closePath()
+  ctx.fill()
 
-  // Колба
+  // ================= КОЛБА =================
+  // Верхний «наплыв» — как у настоящей лампы
+  ctx.fillStyle = '#d8a13f'
+  rr(ctx, -2.6, -42.5, 5.2, 5.5, 2.2)
+  ctx.fill()
   const bg = ctx.createRadialGradient(-4, -30, 3, 0, -25, 16)
   bg.addColorStop(0, '#fffbd8')
   bg.addColorStop(0.55, '#ffe37a')
@@ -642,9 +882,18 @@ function drawPlayer(ctx: CanvasRenderingContext2D, g: EnergoGame) {
   ctx.strokeStyle = 'rgba(140,95,15,0.55)'
   ctx.lineWidth = 1.6
   ctx.stroke()
+  // Блик на стекле
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)'
+  ctx.lineWidth = 2.2
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.arc(-1, -26.5, 9.5, Math.PI * 1.06, Math.PI * 1.4)
+  ctx.stroke()
+  ctx.lineCap = 'butt'
 
-  // Лицо
-  const fx = p.facing * 2.5
+  // ================= ЛИЦО =================
+  const fx = f * 2.5
+  const lookY = clampF(p.vy * 0.22, -2, 2)
   if (p.blink > 0) {
     ctx.strokeStyle = '#4a3208'
     ctx.lineWidth = 1.8
@@ -655,24 +904,56 @@ function drawPlayer(ctx: CanvasRenderingContext2D, g: EnergoGame) {
     ctx.lineTo(fx + 6.5, -28)
     ctx.stroke()
   } else {
-    const py = clampF(p.vy * 0.22, -2, 2)
+    // белки
     ctx.fillStyle = '#fff'
     ctx.beginPath()
-    ctx.arc(fx - 4.5, -28, 3.1, 0, Math.PI * 2)
-    ctx.arc(fx + 4.5, -28, 3.1, 0, Math.PI * 2)
+    ctx.ellipse(fx - 4.5, -28 + lookY * 0.4, 3.4, 3.7, 0, 0, Math.PI * 2)
+    ctx.ellipse(fx + 4.5, -28 + lookY * 0.4, 3.4, 3.7, 0, 0, Math.PI * 2)
     ctx.fill()
+    // зрачки (смотрят по направлению и вверх/вниз)
     ctx.fillStyle = '#33230a'
     ctx.beginPath()
-    ctx.arc(fx - 4.5 + p.facing * 1.1, -28 + py, 1.7, 0, Math.PI * 2)
-    ctx.arc(fx + 4.5 + p.facing * 1.1, -28 + py, 1.7, 0, Math.PI * 2)
+    ctx.arc(fx - 4.5 + f * 1.4, -28 + lookY, 1.8, 0, Math.PI * 2)
+    ctx.arc(fx + 4.5 + f * 1.4, -28 + lookY, 1.8, 0, Math.PI * 2)
+    ctx.fill()
+    // блики
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'
+    ctx.beginPath()
+    ctx.arc(fx - 5.2 + f * 1.4, -29.2 + lookY, 0.7, 0, Math.PI * 2)
+    ctx.arc(fx + 3.8 + f * 1.4, -29.2 + lookY, 0.7, 0, Math.PI * 2)
     ctx.fill()
   }
-  // Улыбка
+  // Решительные брови при разгоне
+  if (speed > 0.35 || air) {
+    ctx.strokeStyle = '#4a3208'
+    ctx.lineWidth = 1.7
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(fx - 7.4, -33.4)
+    ctx.lineTo(fx - 2.2, -32)
+    ctx.moveTo(fx + 7.4, -33.4)
+    ctx.lineTo(fx + 2.2, -32)
+    ctx.stroke()
+    ctx.lineCap = 'butt'
+  }
+  // Рот: улыбка, «о» при быстром падении, решимая линия при разгоне
   ctx.strokeStyle = '#4a3208'
   ctx.lineWidth = 1.6
-  ctx.beginPath()
-  ctx.arc(fx, -22, 4.2, 0.15 * Math.PI, 0.85 * Math.PI)
-  ctx.stroke()
+  if (p.vy > 8.5) {
+    ctx.fillStyle = '#4a3208'
+    ctx.beginPath()
+    ctx.ellipse(fx, -21.5, 2.6, 3.2, 0, 0, Math.PI * 2)
+    ctx.fill()
+  } else if (speed > 0.6) {
+    ctx.beginPath()
+    ctx.moveTo(fx - 3.6, -21.5)
+    ctx.lineTo(fx + 3.6, -21.9)
+    ctx.stroke()
+  } else {
+    ctx.beginPath()
+    ctx.arc(fx, -22.5, 4.2, 0.15 * Math.PI, 0.85 * Math.PI)
+    ctx.stroke()
+  }
   // Щёчки
   ctx.fillStyle = 'rgba(255,120,110,0.45)'
   ctx.beginPath()
@@ -765,6 +1046,142 @@ function drawVampires(ctx: CanvasRenderingContext2D, g: EnergoGame) {
     ctx.lineTo(cx + 3.4 + ex, cy + 1.6)
     ctx.lineTo(cx + 2.5 + ex, cy + 4.4)
     ctx.closePath()
+    ctx.fill()
+  }
+}
+
+/** Гонец — стремительный обогреватель-спринтер. */
+function drawRunners(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+  for (const v of g.runners) {
+    if (v.dead) continue
+    const cx = v.x + v.w / 2
+    const cy = v.y + 18
+    const dir = Math.sign(v.vx) || 1
+    const stride = Math.sin(v.anim * 2.6)
+    // Скоростные шлейфы
+    ctx.strokeStyle = 'rgba(255,140,70,0.4)'
+    ctx.lineWidth = 3
+    ctx.lineCap = 'round'
+    for (let i = 0; i < 3; i++) {
+      const yy = cy - 8 + i * 7
+      ctx.beginPath()
+      ctx.moveTo(cx - dir * (14 + i * 3), yy)
+      ctx.lineTo(cx - dir * (26 + i * 5), yy + 1)
+      ctx.stroke()
+    }
+    ctx.lineCap = 'butt'
+    // Ноги-ножницы
+    ctx.strokeStyle = '#6e2a10'
+    ctx.lineWidth = 3.6
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(cx - 2, cy + 10)
+    ctx.lineTo(cx - 2 + stride * 7, cy + 19 - Math.abs(stride) * 2)
+    ctx.moveTo(cx + 2, cy + 10)
+    ctx.lineTo(cx + 2 - stride * 7, cy + 19 - Math.abs(stride) * 2)
+    ctx.stroke()
+    ctx.lineCap = 'butt'
+    // Наклонённое вперёд тело-пламя
+    const bg = ctx.createLinearGradient(cx, cy - 16, cx, cy + 14)
+    bg.addColorStop(0, '#ff9040')
+    bg.addColorStop(1, '#a33217')
+    ctx.fillStyle = bg
+    ctx.beginPath()
+    ctx.moveTo(cx + dir * 15, cy - 2)
+    ctx.quadraticCurveTo(cx + dir * 6, cy - 18, cx - dir * 9, cy - 13)
+    ctx.quadraticCurveTo(cx - dir * 15, cy + 2, cx - dir * 8, cy + 12)
+    ctx.quadraticCurveTo(cx + dir * 4, cy + 16, cx + dir * 15, cy - 2)
+    ctx.closePath()
+    ctx.fill()
+    ctx.strokeStyle = '#7e2711'
+    ctx.lineWidth = 1.6
+    ctx.stroke()
+    // Дым-хвостик сзади
+    ctx.fillStyle = 'rgba(120,90,80,0.5)'
+    ctx.beginPath()
+    ctx.arc(cx - dir * 16, cy + 6 + Math.sin(g.frame * 0.3) * 2, 4, 0, Math.PI * 2)
+    ctx.arc(cx - dir * 21, cy + 9, 2.6, 0, Math.PI * 2)
+    ctx.fill()
+    // Злые глаза-щёлки
+    ctx.fillStyle = '#ffe14d'
+    ctx.beginPath()
+    ctx.ellipse(cx + dir * 5, cy - 5, 3.2, 2, dir * 0.3, 0, Math.PI * 2)
+    ctx.ellipse(cx + dir * 11, cy - 4, 2.4, 1.6, dir * 0.3, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#42100a'
+    ctx.beginPath()
+    ctx.arc(cx + dir * 5.8, cy - 5, 1.2, 0, Math.PI * 2)
+    ctx.arc(cx + dir * 11.6, cy - 4, 1, 0, Math.PI * 2)
+    ctx.fill()
+    // Решётка-рот
+    ctx.strokeStyle = '#42100a'
+    ctx.lineWidth = 1.4
+    ctx.beginPath()
+    for (let i = 0; i < 3; i++) {
+      ctx.moveTo(cx + dir * (3 + i * 4), cy + 3)
+      ctx.lineTo(cx + dir * (3 + i * 4), cy + 7)
+    }
+    ctx.stroke()
+  }
+}
+
+/** Дрон-пылесос — летающая банка с пропеллером и всасывающей пастью. */
+function drawDrones(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+  for (const d of g.drones) {
+    if (d.dead) continue
+    const cx = d.x + d.w / 2
+    const cy = d.y + d.h / 2
+    const bob = Math.sin(d.anim * 2.2) * 1.6
+    const dir = Math.sign(d.vx) || 1
+    // Корпус-банка
+    const bg = ctx.createLinearGradient(0, cy - 14, 0, cy + 12)
+    bg.addColorStop(0, '#8fa0aa')
+    bg.addColorStop(1, '#4e5a62')
+    ctx.fillStyle = bg
+    rr(ctx, cx - 14, cy - 11 + bob, 28, 22, 9)
+    ctx.fill()
+    ctx.strokeStyle = '#333c42'
+    ctx.lineWidth = 1.8
+    ctx.stroke()
+    // Пропеллер сверху
+    const spin = Math.sin(d.anim * 6) * 12
+    ctx.strokeStyle = 'rgba(200,215,225,0.85)'
+    ctx.lineWidth = 2.4
+    ctx.beginPath()
+    ctx.moveTo(cx - spin, cy - 15 + bob)
+    ctx.lineTo(cx + spin, cy - 15 + bob)
+    ctx.stroke()
+    ctx.strokeStyle = '#333c42'
+    ctx.lineWidth = 1.6
+    ctx.beginPath()
+    ctx.moveTo(cx, cy - 15 + bob)
+    ctx.lineTo(cx, cy - 11 + bob)
+    ctx.stroke()
+    // Красный глаз-сканер
+    const eyeGlow = 0.6 + Math.sin(g.frame * 0.2) * 0.3
+    ctx.fillStyle = `rgba(255,80,60,${eyeGlow})`
+    ctx.beginPath()
+    ctx.arc(cx + dir * 6, cy - 4 + bob, 3, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#2a2f33'
+    ctx.lineWidth = 1.2
+    ctx.stroke()
+    // Всасывающая пасть (снизу-спереди)
+    ctx.fillStyle = '#1c2226'
+    ctx.beginPath()
+    ctx.ellipse(cx + dir * 6, cy + 8 + bob, 7, 5.5, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#0e1214'
+    ctx.lineWidth = 1.6
+    ctx.stroke()
+    ctx.strokeStyle = 'rgba(150,190,210,0.5)'
+    ctx.lineWidth = 1.2
+    ctx.beginPath()
+    ctx.arc(cx + dir * 6, cy + 8 + bob, 4.2, 0.1 * Math.PI, 0.9 * Math.PI)
+    ctx.stroke()
+    // Индикатор зарядки
+    ctx.fillStyle = '#ffd34d'
+    rr(ctx, cx - 9, cy + 1 + bob, 5, 3, 1)
     ctx.fill()
   }
 }
@@ -926,6 +1343,36 @@ function drawHUD(ctx: CanvasRenderingContext2D, g: EnergoGame) {
   ctx.fillStyle = '#c8cdd2'
   rr(ctx, VIEW_W - 99, 48.5, 6, 3.5, 1)
   ctx.fill()
+
+  // Предохранители (если есть)
+  if (g.fusesTotal > 0) {
+    const fy = 70
+    const pulse = g.exit.locked
+      ? 0.6 + Math.sin(g.frame * 0.18) * 0.4
+      : 1
+    ctx.font = fnt(15, 800)
+    ctx.fillStyle = g.exit.locked
+      ? `rgba(255,177,77,${pulse})`
+      : '#ffe37a'
+    ctx.fillText(`${g.fusesGot}/${g.fusesTotal}`, VIEW_W - 48, fy)
+    ctx.fillStyle = '#f0e8d4'
+    rr(ctx, VIEW_W - 101, fy - 7, 8, 12, 2.5)
+    ctx.fill()
+    ctx.strokeStyle = '#a89778'
+    ctx.lineWidth = 1
+    ctx.stroke()
+    ctx.fillStyle = '#c8cdd2'
+    rr(ctx, VIEW_W - 100.5, fy - 9.5, 7, 3, 1)
+    ctx.fill()
+    rr(ctx, VIEW_W - 100.5, fy + 2.5, 7, 3, 1)
+    ctx.fill()
+    if (g.exit.locked) {
+      ctx.font = fnt(9, 800)
+      ctx.fillStyle = `rgba(255,177,77,${0.55 + pulse * 0.4})`
+      ctx.textAlign = 'right'
+      ctx.fillText('ЩИТОК ЗАПЕРТ', VIEW_W - 48, fy + 14)
+    }
+  }
 
   // Название уровня
   const def = LEVELS[g.levelIndex]

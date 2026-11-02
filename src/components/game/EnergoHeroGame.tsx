@@ -9,14 +9,15 @@ import {
   Lightbulb,
   Pause,
   Play,
+  Plug,
   RotateCcw,
   Star,
   ToggleLeft,
+  TriangleAlert,
   Volume2,
   VolumeX,
   Zap,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { EnergoGame, VIEW_H, VIEW_W } from '@/lib/game/engine'
 import type { Phase, Snapshot } from '@/lib/game/types'
 
@@ -29,17 +30,27 @@ const HOW_TO = [
   {
     icon: ToggleLeft,
     title: 'Выключай свет',
-    text: 'Прыгни до рубильника — лампы погаснут, +150 очков',
+    text: 'Дотяни до рубильника — лампы погаснут, +150 очков',
+  },
+  {
+    icon: TriangleAlert,
+    title: 'Шипы и обвалы',
+    text: 'Ржавая арматура жалит, старые плиты осыпаются под ногами',
+  },
+  {
+    icon: Plug,
+    title: 'Ищи предохранители',
+    text: 'Светящийся ключ открывает запертый щиток на выходе',
   },
   {
     icon: Ghost,
-    title: 'Беги от врагов',
-    text: 'Вампиры и Фантомы высасывают энергию. Прыгай им на голову!',
+    title: 'Враги повсюду',
+    text: 'Вампиры, Гонцы, Дроны и Фантомы пьют энергию. Прыгай на голову!',
   },
   {
     icon: DoorOpen,
-    title: 'Добеги до щитка',
-    text: 'Пока шкала энергии не опустела — она тает постоянно!',
+    title: 'Беги к щитку',
+    text: 'Шкала энергии тает всё быстрее с каждым уровнем!',
   },
 ]
 
@@ -204,220 +215,291 @@ export default function EnergoHeroGame() {
           {/* ---------- Оверлеи ---------- */}
           {phase === 'menu' && (
             <Overlay>
-              <div className="flex items-center justify-center gap-3">
-                <Lightbulb className="h-9 w-9 text-amber-300 sm:h-12 sm:w-12" />
-                <h1 className="text-4xl font-black tracking-wider text-emerald-300 drop-shadow-[0_2px_0_rgba(0,0,0,0.5)] sm:text-6xl">
-                  ЭНЕРГОГЕРОЙ
-                </h1>
-                <Zap className="h-9 w-9 text-amber-300 sm:h-12 sm:w-12" />
-              </div>
-              <p className="mx-auto mt-3 max-w-xl text-sm text-emerald-100/80 sm:text-base">
-                Ты — <b>Вжик</b>, храбрая светодиодная лампочка. В доме
-                разбушевались ЭнергоВампиры и везде горит лишний свет. Верни
-                дому зелёный баланс за 20 уровней!
-              </p>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-left sm:mt-5 sm:gap-3 lg:grid-cols-4">
-                {HOW_TO.map((h) => (
-                  <div
-                    key={h.title}
-                    className="rounded-xl border border-emerald-900/70 bg-black/35 p-2.5 sm:p-3"
-                  >
-                    <h.icon className="mb-1.5 h-5 w-5 text-emerald-400" />
-                    <div className="text-[13px] font-bold leading-tight text-emerald-100">
-                      {h.title}
+              <Panel>
+                <div className="flex items-center justify-center gap-3">
+                  <Lightbulb className="ah-float h-8 w-8 text-amber-300 sm:h-10 sm:w-10" />
+                  <h1 className="text-3xl font-black tracking-wider text-emerald-300 drop-shadow-[0_2px_0_rgba(0,0,0,0.5)] sm:text-5xl">
+                    ЭНЕРГОГЕРОЙ
+                  </h1>
+                  <Zap className="ah-float h-8 w-8 text-amber-300 sm:h-10 sm:w-10" />
+                </div>
+                <p className="mx-auto mt-3 max-w-xl text-sm text-emerald-100/80 sm:text-base">
+                  Ты — <b>Вжик</b>, храбрая лампочка в плаще. В доме
+                  разбушевались ЭнергоВампиры, Гонцы и Дроны-пылесосы, а лишний
+                  свет жрёт энергию. 20 уровней — и каждый злее предыдущего!
+                </p>
+                <div className="mt-4 grid grid-cols-2 gap-2 text-left sm:gap-3 lg:grid-cols-3">
+                  {HOW_TO.map((h, i) => (
+                    <div
+                      key={h.title}
+                      className="ah-pop relative rounded-lg border-2 border-emerald-900/80 bg-black/40 p-2.5 sm:p-3"
+                      style={{ animationDelay: `${i * 60}ms` }}
+                    >
+                      <h.icon className="mb-1.5 h-5 w-5 text-emerald-400" />
+                      <div className="text-[13px] font-black uppercase tracking-wide leading-tight text-emerald-100">
+                        {h.title}
+                      </div>
+                      <div className="mt-1 text-[11px] leading-snug text-emerald-200/60">
+                        {h.text}
+                      </div>
                     </div>
-                    <div className="mt-1 text-[11px] leading-snug text-emerald-200/60">
-                      {h.text}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 flex flex-col items-center gap-2 sm:mt-5">
-                <Button
-                  onClick={() => act('start')}
-                  size="lg"
-                  className="h-12 rounded-full bg-emerald-500 px-10 text-lg font-black text-emerald-950 shadow-[0_0_30px_rgba(52,211,153,0.4)] hover:bg-emerald-400"
-                >
-                  <Play className="mr-2 h-5 w-5" /> ИГРАТЬ
-                </Button>
-                {!isTouch && (
-                  <p className="text-xs text-emerald-200/50">
-                    ← → или A D — движение · Space / ↑ — прыжок · P — пауза ·
-                    прыгай врагам на голову
-                  </p>
-                )}
-                {best > 0 && (
-                  <p className="flex items-center gap-1 text-xs font-bold text-amber-300/90">
-                    <Star className="h-3.5 w-3.5 fill-amber-300" /> Рекорд: {best}
-                  </p>
-                )}
-              </div>
+                  ))}
+                </div>
+                <div className="mt-5 flex flex-col items-center gap-3">
+                  <ArcadeButton onClick={() => act('start')} size="lg">
+                    <Play className="h-5 w-5" /> ИГРАТЬ
+                  </ArcadeButton>
+                  {!isTouch && (
+                    <p className="text-xs text-emerald-200/50">
+                      ← → или A D — движение · Space / ↑ — прыжок · P — пауза ·
+                      прыгай врагам на голову
+                    </p>
+                  )}
+                  {best > 0 && (
+                    <p className="flex items-center gap-1 text-xs font-bold text-amber-300/90">
+                      <Star className="h-3.5 w-3.5 fill-amber-300" /> Рекорд:{' '}
+                      {best}
+                    </p>
+                  )}
+                </div>
+              </Panel>
             </Overlay>
           )}
 
           {phase === 'intro' && snap && (
             <Overlay>
-              <p className="text-sm font-bold uppercase tracking-[0.3em] text-emerald-400">
-                {snap.levelSubtitle}
-              </p>
-              <h2 className="mt-1 text-4xl font-black text-white sm:text-5xl">
-                {snap.levelName}
-              </h2>
-              <div className="mx-auto mt-4 max-w-xl rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-                <p className="flex items-start gap-2 text-left text-sm leading-relaxed text-amber-100/90 sm:text-[15px]">
-                  <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
-                  <span>{snap.hint}</span>
+              <Panel>
+                {snap.badge && (
+                  <div className="mb-3 flex justify-center">
+                    <span className="ah-stamp inline-block -rotate-2 rounded-md border-[3px] border-amber-400 bg-amber-400/10 px-3 py-1 text-xs font-black uppercase tracking-[0.25em] text-amber-300">
+                      {snap.badge}
+                    </span>
+                  </div>
+                )}
+                <p className="text-xs font-black uppercase tracking-[0.35em] text-emerald-500">
+                  {snap.levelSubtitle}
                 </p>
-              </div>
-              <Button
-                onClick={() => act('begin')}
-                size="lg"
-                className="mt-6 h-12 rounded-full bg-emerald-500 px-10 text-lg font-black text-emerald-950 hover:bg-emerald-400"
-              >
-                ВПЕРЁД! <ChevronRight className="ml-1 h-5 w-5" />
-              </Button>
+                <h2 className="mt-1 text-4xl font-black text-white sm:text-5xl">
+                  {snap.levelName}
+                </h2>
+                <div className="mx-auto mt-4 max-w-xl rounded-lg border-2 border-amber-500/40 bg-amber-500/10 p-4 text-left">
+                  <p className="flex items-start gap-2 text-sm leading-relaxed text-amber-100/90 sm:text-[15px]">
+                    <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+                    <span>{snap.hint}</span>
+                  </p>
+                </div>
+                <div className="mt-5">
+                  <ArcadeButton onClick={() => act('begin')} size="lg">
+                    В БОЙ! <ChevronRight className="h-5 w-5" />
+                  </ArcadeButton>
+                </div>
+              </Panel>
             </Overlay>
           )}
 
           {phase === 'paused' && (
             <Overlay>
-              <h2 className="text-4xl font-black text-white">ПАУЗА</h2>
-              <p className="mt-2 text-sm text-emerald-200/70">
-                Свет подождёт. Но недолго!
-              </p>
-              <div className="mt-6 flex gap-3">
-                <Button
-                  onClick={() => act('pause')}
-                  className="h-11 rounded-full bg-emerald-500 px-8 font-black text-emerald-950 hover:bg-emerald-400"
-                >
-                  <Play className="mr-2 h-4 w-4" /> Продолжить
-                </Button>
-                <Button
-                  onClick={() => act('menu')}
-                  variant="outline"
-                  className="h-11 rounded-full border-emerald-800 bg-transparent px-6 font-bold text-emerald-200 hover:bg-emerald-950 hover:text-emerald-100"
-                >
-                  <Home className="mr-2 h-4 w-4" /> В меню
-                </Button>
-              </div>
+              <Panel>
+                <h2 className="text-3xl font-black tracking-[0.3em] text-white">
+                  ПАУЗА
+                </h2>
+                <p className="mt-2 text-sm text-emerald-200/70">
+                  Свет подождёт. Но недолго
+                  <span className="ah-blink ml-1 inline-block h-4 w-2 translate-y-0.5 bg-emerald-300" />
+                </p>
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
+                  <ArcadeButton onClick={() => act('pause')}>
+                    <Play className="h-4 w-4" /> Продолжить
+                  </ArcadeButton>
+                  <ArcadeButton tone="ghost" onClick={() => act('menu')}>
+                    <Home className="h-4 w-4" /> В меню
+                  </ArcadeButton>
+                </div>
+              </Panel>
             </Overlay>
           )}
 
           {phase === 'complete' && snap?.result && (
             <Overlay>
-              <p className="text-sm font-bold uppercase tracking-[0.3em] text-emerald-400">
-                Уровень пройден
-              </p>
-              <h2 className="mt-1 text-4xl font-black text-white sm:text-5xl">
-                {snap.result.levelName} спасена!
-              </h2>
-              <div className="mx-auto mt-5 grid max-w-md grid-cols-2 gap-2 sm:gap-3">
-                <Stat icon={Zap} label="Энергия" value={`${snap.result.energy}%`} />
-                <Stat icon={Star} label="Бонус" value={`+${snap.result.bonus}`} />
-                <Stat
-                  icon={Lightbulb}
-                  label="Лампочки"
-                  value={`${snap.result.bulbs}/${snap.result.bulbsTotal}`}
-                />
-                <Stat
-                  icon={ToggleLeft}
-                  label="Рубильники"
-                  value={`${snap.result.switches}/${snap.result.switchesTotal}`}
-                />
-              </div>
-              <p className="mt-4 text-lg font-black text-amber-300">
-                Очки: {snap.result.score}
-              </p>
-              <Button
-                onClick={() => act('next')}
-                size="lg"
-                className="mt-5 h-12 rounded-full bg-emerald-500 px-10 text-lg font-black text-emerald-950 hover:bg-emerald-400"
-              >
-                ДАЛЬШЕ <ChevronRight className="ml-1 h-5 w-5" />
-              </Button>
+              <Panel>
+                <div className="flex justify-center">
+                  <span className="ah-stamp inline-block -rotate-2 rounded-md border-[3px] border-emerald-400 px-4 py-1 text-base font-black uppercase tracking-[0.25em] text-emerald-300 sm:text-lg">
+                    Уровень зачищен
+                  </span>
+                </div>
+                <h2 className="mt-3 text-3xl font-black text-white sm:text-4xl">
+                  {snap.result.levelName} спасена!
+                </h2>
+
+                {/* Прогресс забега: 20 точек */}
+                <LevelDots current={snap.levelIndex} />
+
+                <div className="mx-auto mt-4 grid max-w-md grid-cols-2 gap-2 sm:gap-3">
+                  <Tally
+                    icon={Zap}
+                    label="Энергия"
+                    value={`${snap.result.energy}%`}
+                    pct={snap.result.energy / 100}
+                    delay={120}
+                  />
+                  <Tally
+                    icon={Star}
+                    label="Бонус"
+                    value={`+${snap.result.bonus}`}
+                    delay={180}
+                  />
+                  <Tally
+                    icon={Lightbulb}
+                    label="Лампочки"
+                    value={`${snap.result.bulbs}/${snap.result.bulbsTotal}`}
+                    pct={
+                      snap.result.bulbsTotal > 0
+                        ? snap.result.bulbs / snap.result.bulbsTotal
+                        : 1
+                    }
+                    delay={240}
+                  />
+                  <Tally
+                    icon={ToggleLeft}
+                    label="Рубильники"
+                    value={`${snap.result.switches}/${snap.result.switchesTotal}`}
+                    pct={
+                      snap.result.switchesTotal > 0
+                        ? snap.result.switches / snap.result.switchesTotal
+                        : 1
+                    }
+                    delay={300}
+                  />
+                  {snap.result.fusesTotal > 0 && (
+                    <div className="col-span-2">
+                      <Tally
+                        icon={Plug}
+                        label="Предохранители"
+                        value={`${snap.result.fuses}/${snap.result.fusesTotal}`}
+                        pct={
+                          snap.result.fusesTotal > 0
+                            ? snap.result.fuses / snap.result.fusesTotal
+                            : 1
+                        }
+                        delay={340}
+                      />
+                    </div>
+                  )}
+                </div>
+                <p className="mt-4 text-2xl font-black text-amber-300">
+                  <ScoreCount value={snap.result.score} />{' '}
+                  <span className="text-sm tracking-widest text-amber-200/60">
+                    ОЧКОВ
+                  </span>
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-3">
+                  <ArcadeButton onClick={() => act('next')} size="lg">
+                    ДАЛЬШЕ <ChevronRight className="h-5 w-5" />
+                  </ArcadeButton>
+                  <ArcadeButton tone="ghost" onClick={() => act('menu')}>
+                    <Home className="h-4 w-4" /> В меню
+                  </ArcadeButton>
+                </div>
+              </Panel>
             </Overlay>
           )}
 
           {phase === 'gameover' && (
             <Overlay>
-              <Ghost className="mx-auto h-14 w-14 text-purple-300" />
-              <h2 className="mt-3 text-4xl font-black text-white">
-                Энергия кончилась!
-              </h2>
-              <p className="mx-auto mt-2 max-w-md text-sm text-emerald-100/75">
-                Вампиры высосали всё электричество. Не сдавайся: собирай
-                лампочки и выключай свет быстрее!
-              </p>
-              <div className="mt-6 flex gap-3">
-                <Button
-                  onClick={() => act('retry')}
-                  className="h-11 rounded-full bg-emerald-500 px-8 font-black text-emerald-950 hover:bg-emerald-400"
-                >
-                  <RotateCcw className="mr-2 h-4 w-4" /> Ещё раз
-                </Button>
-                <Button
-                  onClick={() => act('menu')}
-                  variant="outline"
-                  className="h-11 rounded-full border-emerald-800 bg-transparent px-6 font-bold text-emerald-200 hover:bg-emerald-950 hover:text-emerald-100"
-                >
-                  <Home className="mr-2 h-4 w-4" /> В меню
-                </Button>
-              </div>
+              <Panel tone="danger">
+                <div className="ah-stripes h-3 w-full rounded-sm bg-[repeating-linear-gradient(45deg,#fb7185_0_14px,#1c0a0e_14px_28px)]" />
+                <Ghost className="mx-auto mt-4 h-14 w-14 text-rose-300" />
+                <h2 className="mt-3 text-3xl font-black tracking-wide text-white sm:text-4xl">
+                  ЭНЕРГИЯ НА НУЛЕ
+                </h2>
+                <p className="mx-auto mt-2 max-w-md text-sm text-rose-100/75">
+                  Вампиры и Гонцы высосали всё электричество. Собирай лампочки,
+                  выключай свет и не наступай на шипы!
+                </p>
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
+                  <ArcadeButton onClick={() => act('retry')}>
+                    <RotateCcw className="h-4 w-4" /> Ещё раз
+                  </ArcadeButton>
+                  <ArcadeButton tone="ghost" onClick={() => act('menu')}>
+                    <Home className="h-4 w-4" /> В меню
+                  </ArcadeButton>
+                </div>
+              </Panel>
             </Overlay>
           )}
 
           {phase === 'victory' && snap?.summary && (
             <Overlay>
-              <div className="flex justify-center gap-2">
-                {[0, 1, 2].map((i) => (
-                  <Star
-                    key={i}
-                    className={`h-10 w-10 sm:h-12 sm:w-12 ${
-                      i < snap.summary!.stars
-                        ? 'fill-amber-400 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]'
-                        : 'text-emerald-900'
-                    }`}
+              <Panel tone="gold">
+                <div className="flex justify-center gap-2">
+                  {[0, 1, 2].map((i) => (
+                    <Star
+                      key={i}
+                      className={`ah-pop h-10 w-10 sm:h-12 sm:w-12 ${
+                        i < snap.summary!.stars
+                          ? 'fill-amber-400 text-amber-400 drop-shadow-[0_0_14px_rgba(251,191,36,0.7)]'
+                          : 'text-emerald-900'
+                      }`}
+                      style={{ animationDelay: `${200 + i * 220}ms` }}
+                    />
+                  ))}
+                </div>
+                <h2 className="mt-3 text-4xl font-black tracking-wide text-amber-300 sm:text-5xl">
+                  ДОМ СПАСЁН!
+                </h2>
+                <p className="mx-auto mt-2 max-w-md text-sm text-amber-100/80">
+                  Все лампы выключены, вампиры разгромлены, предохранители на
+                  месте. Настоящий ЭнергоГерой экономит свет и в жизни!
+                </p>
+                <div className="mx-auto mt-5 grid max-w-md grid-cols-2 gap-2 sm:gap-3">
+                  <Tally
+                    icon={Star}
+                    label="Очки"
+                    value={String(snap.summary.score)}
+                    delay={150}
                   />
-                ))}
-              </div>
-              <h2 className="mt-3 text-4xl font-black text-emerald-300 sm:text-5xl">
-                Дом спасён!
-              </h2>
-              <p className="mx-auto mt-2 max-w-md text-sm text-emerald-100/80">
-                Все лампы выключены, вампиры разгромлены. Настоящий
-                ЭнергоГерой экономит свет и в жизни!
-              </p>
-              <div className="mx-auto mt-5 grid max-w-md grid-cols-2 gap-2 sm:gap-3">
-                <Stat icon={Star} label="Очки" value={String(snap.summary.score)} />
-                <Stat icon={Zap} label="Рекорд" value={String(snap.summary.best)} />
-                <Stat
-                  icon={Lightbulb}
-                  label="Лампочки"
-                  value={`${snap.summary.bulbs}/${snap.summary.bulbsTotal}`}
-                />
-                <Stat
-                  icon={ToggleLeft}
-                  label="Рубильники"
-                  value={`${snap.summary.switches}/${snap.summary.switchesTotal}`}
-                />
-              </div>
-              <div className="mt-6 flex gap-3">
-                <Button
-                  onClick={() => act('start')}
-                  className="h-11 rounded-full bg-emerald-500 px-8 font-black text-emerald-950 hover:bg-emerald-400"
-                >
-                  <RotateCcw className="mr-2 h-4 w-4" /> Играть снова
-                </Button>
-                <Button
-                  onClick={() => act('menu')}
-                  variant="outline"
-                  className="h-11 rounded-full border-emerald-800 bg-transparent px-6 font-bold text-emerald-200 hover:bg-emerald-950 hover:text-emerald-100"
-                >
-                  <Home className="mr-2 h-4 w-4" /> В меню
-                </Button>
-              </div>
+                  <Tally
+                    icon={Zap}
+                    label="Рекорд"
+                    value={String(snap.summary.best)}
+                    delay={210}
+                  />
+                  <Tally
+                    icon={Lightbulb}
+                    label="Лампочки"
+                    value={`${snap.summary.bulbs}/${snap.summary.bulbsTotal}`}
+                    pct={
+                      snap.summary.bulbsTotal > 0
+                        ? snap.summary.bulbs / snap.summary.bulbsTotal
+                        : 1
+                    }
+                    delay={270}
+                  />
+                  <Tally
+                    icon={ToggleLeft}
+                    label="Рубильники"
+                    value={`${snap.summary.switches}/${snap.summary.switchesTotal}`}
+                    pct={
+                      snap.summary.switchesTotal > 0
+                        ? snap.summary.switches / snap.summary.switchesTotal
+                        : 1
+                    }
+                    delay={330}
+                  />
+                </div>
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
+                  <ArcadeButton onClick={() => act('start')}>
+                    <RotateCcw className="h-4 w-4" /> Играть снова
+                  </ArcadeButton>
+                  <ArcadeButton tone="ghost" onClick={() => act('menu')}>
+                    <Home className="h-4 w-4" /> В меню
+                  </ArcadeButton>
+                </div>
+              </Panel>
             </Overlay>
           )}
+
+          {/* Экран «запертого щитка» отрисован прямо на канвасе */}
         </div>
 
         {/* ---------- Сенсорное управление ---------- */}
@@ -441,32 +523,152 @@ export default function EnergoHeroGame() {
 
 function Overlay({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute inset-0 z-10 flex overflow-y-auto bg-[#050a06]/72 p-4 backdrop-blur-[3px]">
+    <div className="absolute inset-0 z-10 flex overflow-y-auto bg-[#050a06]/70 p-3 backdrop-blur-[3px]">
       <div className="m-auto w-full max-w-2xl py-2 text-center">{children}</div>
     </div>
   )
 }
 
-function Stat({
+/* ------------------------------------------------------------------ */
+/* Кастомные элементы интерфейса (в стиле «энергетического терминала») */
+/* ------------------------------------------------------------------ */
+
+const PANEL_TONES = {
+  green:
+    'border-emerald-700/90 bg-[#07130a]/95 shadow-[0_18px_50px_rgba(0,0,0,0.6)]',
+  danger:
+    'border-rose-800/90 bg-[#160a0c]/95 shadow-[0_18px_50px_rgba(0,0,0,0.6)]',
+  gold: 'border-amber-500/80 bg-[#171004]/95 shadow-[0_18px_50px_rgba(0,0,0,0.6)]',
+} as const
+
+function Panel({
+  children,
+  tone = 'green',
+}: {
+  children: React.ReactNode
+  tone?: keyof typeof PANEL_TONES
+}) {
+  return (
+    <div
+      className={`ah-pop relative rounded-2xl border-[3px] p-1.5 ${PANEL_TONES[tone]}`}
+    >
+      {/* Заклёпки по углам */}
+      <span className="absolute left-2 top-2 h-1.5 w-1.5 rounded-full bg-amber-400/70" />
+      <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-amber-400/70" />
+      <span className="absolute bottom-2 left-2 h-1.5 w-1.5 rounded-full bg-amber-400/70" />
+      <span className="absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full bg-amber-400/70" />
+      <div className="rounded-xl border-2 border-dashed border-white/10 px-4 py-5 sm:px-7 sm:py-6">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+const BTN_TONES = {
+  primary:
+    'border-emerald-950 bg-gradient-to-b from-emerald-400 to-emerald-600 text-emerald-950 shadow-[0_5px_0_#022c22] hover:brightness-110 active:shadow-[0_1px_0_#022c22]',
+  ghost:
+    'border-emerald-800 bg-emerald-950/70 text-emerald-200 shadow-[0_5px_0_rgba(0,0,0,0.55)] hover:bg-emerald-900/80 active:shadow-[0_1px_0_rgba(0,0,0,0.55)]',
+} as const
+
+function ArcadeButton({
+  children,
+  onClick,
+  tone = 'primary',
+  size = 'md',
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  tone?: keyof typeof BTN_TONES
+  size?: 'md' | 'lg'
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`group relative inline-flex select-none items-center justify-center gap-2 overflow-hidden rounded-lg border-2 font-black uppercase tracking-wider transition-all duration-75 active:translate-y-[4px] ${
+        BTN_TONES[tone]
+      } ${size === 'lg' ? 'h-12 px-9 text-lg' : 'h-11 px-6 text-sm'}`}
+    >
+      {/* Блик, пробегающий при наведении */}
+      <span className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/3 -translate-x-[160%] skew-x-[-18deg] bg-white/25 transition-transform duration-500 group-hover:translate-x-[420%]" />
+      {children}
+    </button>
+  )
+}
+
+function Tally({
   icon: Icon,
   label,
   value,
+  pct,
+  delay = 0,
 }: {
   icon: React.ComponentType<{ className?: string }>
   label: string
   value: string
+  pct?: number
+  delay?: number
 }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-xl border border-emerald-900/70 bg-black/35 px-3 py-2.5 text-left">
+    <div
+      className="ah-pop flex items-center gap-2.5 rounded-lg border-2 border-emerald-900/80 bg-black/40 px-3 py-2 text-left"
+      style={{ animationDelay: `${delay}ms` }}
+    >
       <Icon className="h-5 w-5 shrink-0 text-emerald-400" />
-      <div className="min-w-0">
-        <div className="text-[11px] uppercase tracking-wide text-emerald-200/60">
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200/60">
           {label}
         </div>
         <div className="truncate text-base font-black text-white">{value}</div>
+        {pct !== undefined && (
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-emerald-950">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-amber-300 transition-[width] duration-700"
+              style={{ width: `${Math.round(Math.max(0, Math.min(1, pct)) * 100)}%` }}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
+}
+
+function LevelDots({ current }: { current: number }) {
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
+      {Array.from({ length: 20 }, (_, i) => (
+        <span
+          key={i}
+          title={`Уровень ${i + 1}`}
+          className={`h-2.5 rounded-full transition-all ${
+            i === current
+              ? 'ah-pop w-6 bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.8)]'
+              : i < current
+                ? 'w-2.5 bg-emerald-500'
+                : 'w-2.5 bg-emerald-950 ring-1 ring-emerald-900'
+          }`}
+        />
+      ))}
+    </div>
+  )
+}
+
+/** Плавный счётчик очков. */
+function ScoreCount({ value }: { value: number }) {
+  const [v, setV] = useState(0)
+  useEffect(() => {
+    let raf = 0
+    const t0 = performance.now()
+    const dur = 700
+    const tick = (t: number) => {
+      const k = Math.min(1, (t - t0) / dur)
+      setV(Math.round(value * (1 - Math.pow(1 - k, 3))))
+      if (k < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value])
+  return <>{v}</>
 }
 
 function TouchBtn({
@@ -480,7 +682,7 @@ function TouchBtn({
   return (
     <button
       {...handlers}
-      className={`touch-none select-none rounded-2xl border border-emerald-800/80 bg-emerald-900/50 font-black text-emerald-100 shadow-inner active:bg-emerald-600/60 ${
+      className={`touch-none select-none rounded-2xl border-2 border-emerald-800/80 bg-emerald-900/50 font-black text-emerald-100 shadow-inner active:bg-emerald-600/60 ${
         wide ? 'h-16 px-10 text-lg' : 'h-16 w-20 text-2xl'
       }`}
     >
