@@ -495,7 +495,7 @@ export class EnergoGame {
     this.switchesTotal = this.switches.length
     this.fusesTotal = this.fuses.length
     // Если на уровне есть предохранители — выход заперт, пока не собраны
-    this.exit.locked = this.fusesTotal > 0
+    this.exit.locked = this.switchesTotal > 0 || this.fusesTotal > 0
     this.runBulbsTotal = LEVELS.reduce(
       (s, l) => s + countChar(l.map, 'B'),
       0,
@@ -969,7 +969,7 @@ export class EnergoGame {
         fu.taken = true
         this.fusesGot++
         this.score += SCORE_FUSE
-        this.exit.locked = this.fusesGot < this.fusesTotal
+        this.refreshExitLock()
         this.shake = 3
         this.spawnParticles(fu.x, bobY, 14, 'spark')
         this.sfx.unlock()
@@ -1014,6 +1014,9 @@ export class EnergoGame {
       const box = { x: s.x - 15, y: s.y - 38, w: 30, h: 38 }
       if (rectsOverlap(this.player, box)) {
         s.flipped = true
+        // Рубильник засчитывается всегда, даже если его лампы уже погашены
+        this.switchesGot++
+        this.runSwitches++
         let turned = 0
         for (const l of this.lamps) {
           if (l.group === s.group && l.on) {
@@ -1023,16 +1026,28 @@ export class EnergoGame {
         }
         if (turned > 0) {
           this.score += 150
-          this.switchesGot++
-          this.runSwitches++
           for (const l of this.lamps) {
             if (l.group === s.group)
               this.spawnParticles(l.x, l.y + 10, 7, 'spark')
           }
           this.spawnParticles(s.x, s.y - 20, 8, 'star')
-          this.sfx.flip()
         }
+        this.sfx.flip()
+        this.refreshExitLock()
       }
+    }
+  }
+
+  /** Щиток открывается только когда ВСЕ рубильники внизу и все предохранители на месте. */
+  private refreshExitLock() {
+    const wasLocked = this.exit.locked
+    this.exit.locked =
+      this.switchesGot < this.switchesTotal || this.fusesGot < this.fusesTotal
+    if (wasLocked && !this.exit.locked) {
+      // Щиток под напряжением — торжественный аккорд и искры
+      this.shake = 2
+      this.spawnParticles(this.exit.x + 18, this.exit.y - 30, 16, 'spark')
+      this.sfx.unlock()
     }
   }
 

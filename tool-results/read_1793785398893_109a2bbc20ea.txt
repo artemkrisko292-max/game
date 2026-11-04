@@ -1,0 +1,850 @@
+     1→// Иллюстрации катсцен «ЭнергоГероя»: рисованные кадры-комиксы в палитре игры.
+     2→// Каждый кадр — SVG 320×180 вflat-стиле: тёплая бумага, чернильный контур,
+     3→// ламповое золото и ночь. Персонажи повторяют дизайн с игрового канваса.
+     4→
+     5→import type { ArtId } from '@/lib/game/story'
+     6→
+     7→const INK = '#221e17'
+     8→const GOLD = '#ffd23f'
+     9→const RED = '#c8402e'
+    10→const PAPER = '#f4eeda'
+    11→
+    12→/* ================================================================== */
+    13→/* Персонажи                                                          */
+    14→/* ================================================================== */
+    15→
+    16→type Mood = 'happy' | 'determined' | 'gasp' | 'angry' | 'calm'
+    17→
+    18→/** Вжик — светодиодная лампочка в плаще. Центр колбы (0,0), радиус 16. */
+    19→function Vzhik({
+    20→  x,
+    21→  y,
+    22→  s = 1,
+    23→  flip = 1,
+    24→  mood = 'happy',
+    25→  cape = 1.3,
+    26→}: {
+    27→  x: number
+    28→  y: number
+    29→  s?: number
+    30→  flip?: 1 | -1
+    31→  mood?: Mood
+    32→  cape?: number
+    33→}) {
+    34→  const f = flip as 1 | -1
+    35→  return (
+    36→    <g transform={`translate(${x} ${y}) scale(${(s * f).toFixed(3)} ${s})`}>
+    37→      {/* плащ течёт за спину */}
+    38→      <path
+    39→        d={`M ${-3 * f} -14 C ${-18 * f * cape} -8, ${-24 * f * cape} 6, ${-20 * f * cape} 26 L ${-4 * f} 14 Z`}
+    40→        fill="#b52f34"
+    41→        stroke="#7d1c26"
+    42→        strokeWidth="1.6"
+    43→      />
+    44→      <path
+    45→        d={`M ${-3 * f} -12 C ${-13 * f * cape} -6, ${-17 * f * cape} 6, ${-14 * f * cape} 22 L ${-4 * f} 13 Z`}
+    46→        fill="#87202c"
+    47→        opacity="0.55"
+    48→      />
+    49→      {/* свечение */}
+    50→      <circle cx="0" cy="0" r="24" fill="url(#ah-glow-warm)" opacity="0.5" />
+    51→      {/* ножки в ботинках */}
+    52→      <path d="M -6 16 L -8 27" stroke="#6b4a12" strokeWidth="4.4" strokeLinecap="round" />
+    53→      <path d="M 6 16 L 8 27" stroke="#6b4a12" strokeWidth="4.4" strokeLinecap="round" />
+    54→      <rect x={-12.5 + (f < 0 ? -3 : 0)} y="25" width="10" height="5" rx="2.4" fill="#5d420f" />
+    55→      <rect x={3.5 + (f < 0 ? -3 : 0)} y="25" width="10" height="5" rx="2.4" fill="#5d420f" />
+    56→      {/* цоколь-броня */}
+    57→      <rect x="-11" y="9" width="22" height="13" rx="3" fill="#b9bec4" stroke="#7d838a" strokeWidth="1.4" />
+    58→      <path d="M -11 14 H 11 M -11 17.5 H 11" stroke="#8b9198" strokeWidth="1.2" />
+    59→      <path d={`M ${1.8 * f} 9.5 L ${-2.4 * f} 13.2 L ${-0.4 * f} 13.2 L ${-1.8 * f} 17.4 L ${2.6 * f} 12.4 L ${0.4 * f} 12.4 Z`} fill="#f7b32b" />
+    60→      {/* наплыв колбы */}
+    61→      <rect x="-4" y="-26" width="8" height="7" rx="3" fill="#d8a13f" stroke="#8c5f0f" strokeWidth="1.2" />
+    62→      {/* колба */}
+    63→      <circle cx="0" cy="0" r="16" fill="url(#ah-bulb)" stroke="rgba(140,95,15,0.7)" strokeWidth="1.8" />
+    64→      <path d="M -9 -6 A 11.5 11.5 0 0 1 -1 -12.6" stroke="rgba(255,255,255,0.8)" strokeWidth="2.4" strokeLinecap="round" fill="none" />
+    65→      {/* лицо */}
+    66→      {mood === 'gasp' ? (
+    67→        <>
+    68→          <ellipse cx="-6" cy="-3.5" rx="4" ry="4.6" fill="#fff" />
+    69→          <ellipse cx="6" cy="-3.5" rx="4" ry="4.6" fill="#fff" />
+    70→          <circle cx="-5" cy="-2.6" r="2.1" fill="#33230a" />
+    71→          <circle cx="7" cy="-2.6" r="2.1" fill="#33230a" />
+    72→          <circle cx="-6" cy="-5" r="3.9" fill="none" stroke={INK} strokeWidth="1.4" />
+    73→          <circle cx="6" cy="-5" r="3.9" fill="none" stroke={INK} strokeWidth="1.4" />
+    74→          <ellipse cx="0" cy="7" rx="2.6" ry="3.4" fill="#4a3208" />
+    75→        </>
+    76→      ) : (
+    77→        <>
+    78→          <ellipse cx="-5.5" cy="-3.5" rx="3.7" ry="4.1" fill="#fff" />
+    79→          <ellipse cx="5.5" cy="-3.5" rx="3.7" ry="4.1" fill="#fff" />
+    80→          <circle cx={-4.4 + f * 0.9} cy="-3" r="1.9" fill="#33230a" />
+    81→          <circle cx={6.6 + f * 0.9} cy="-3" r="1.9" fill="#33230a" />
+    82→          <circle cx={-5.4 + f} cy="-4.6" r="0.8" fill="#fff" opacity="0.9" />
+    83→          <circle cx={5.6 + f} cy="-4.6" r="0.8" fill="#fff" opacity="0.9" />
+    84→          {mood === 'calm' ? null : (
+    85→            <path d={`M ${-9.5 * f} -9.5 L ${-2.6 * f} -7.6`} stroke="#4a3208" strokeWidth="1.8" strokeLinecap="round" />
+    86→          )}
+    87→        </>
+    88→      )}
+    89→      {/* брови решительные / спокойные */}
+    90→      {mood === 'determined' || mood === 'angry' ? (
+    91→        <>
+    92→          <path d={`M ${-9.8 * f} -9.2 L ${-2.4 * f} -7.9`} stroke="#4a3208" strokeWidth="1.7" strokeLinecap="round" />
+    93→          <path d={`M ${9.8 * f} -9.2 L ${2.4 * f} -7.9`} stroke="#4a3208" strokeWidth="1.7" strokeLinecap="round" />
+    94→        </>
+    95→      ) : null}
+    96→      {/* рот */}
+    97→      {mood === 'determined' ? (
+    98→        <path d="M -4.2 7.1 A 4.4 4.4 0 0 0 4.2 7.05" stroke="#4a3208" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+    99→      ) : mood === 'calm' ? (
+   100→        <path d="M -3.4 7 A 4.6 4.6 0 0 0 3.4 7" stroke="#4a3208" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+   101→      ) : mood === 'happy' ? (
+   102→        <path d="M -4.6 5.6 A 5 5 0 0 0 4.6 5.6" stroke="#4a3208" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+   103→      ) : null}
+   104→      {/* щёчки */}
+   105→      <circle cx="-9.6" cy="3" r="2.4" fill="rgba(255,120,110,0.5)" />
+   106→      <circle cx="9.6" cy="3" r="2.4" fill="rgba(255,120,110,0.5)" />
+   107→    </g>
+   108→  )
+   109→}
+   110→
+   111→/** Барон Накал — старая лампа накаливания с короной. Центр колбы (0,0), r=30. */
+   112→function Baron({
+   113→  x,
+   114→  y,
+   115→  s = 1,
+   116→  flip = 1,
+   117→  mood = 'angry',
+   118→  filament = 'hot',
+   119→  arms = 'spread',
+   120→  crownTilt = 0,
+   121→}: {
+   122→  x: number
+   123→  y: number
+   124→  s?: number
+   125→  flip?: 1 | -1
+   126→  mood?: Mood
+   127→  filament?: 'hot' | 'dim'
+   128→  arms?: 'spread' | 'grip' | 'down'
+   129→  crownTilt?: number
+   130→}) {
+   131→  const f = flip as 1 | -1
+   132→  const filColor = filament === 'hot' ? '#ff8a3c' : '#6b4a2e'
+   133→  return (
+   134→    <g transform={`translate(${x} ${y}) scale(${(s * f).toFixed(3)} ${s})`}>
+   135→      {/* плащ */}
+   136→      <path
+   137→        d="M -6 -20 C -44 -8, -52 26, -44 44 L -6 26 L 34 44 C 44 26, 38 -8, 6 -20 Z"
+   138→        fill="#4a3a2e"
+   139→        stroke="#2c2118"
+   140→        strokeWidth="2"
+   141→      />
+   142→      <path d="M -6 -18 C -30 -8, -36 18, -32 36 L -6 24 Z" fill="#33271d" opacity="0.6" />
+   143→      {/* руки */}
+   144→      {arms === 'spread' ? (
+   145→        <>
+   146→          <path d="M -26 2 C -38 0, -46 -6, -50 -14" stroke="#33271d" strokeWidth="6.5" strokeLinecap="round" fill="none" />
+   147→          <path d="M 26 2 C 38 0, 46 -6, 50 -14" stroke="#33271d" strokeWidth="6.5" strokeLinecap="round" fill="none" />
+   148→          <circle cx="-52" cy="-16" r="4.6" fill="#8a6a3a" stroke="#2c2118" strokeWidth="1.4" />
+   149→          <circle cx="52" cy="-16" r="4.6" fill="#8a6a3a" stroke="#2c2118" strokeWidth="1.4" />
+   150→        </>
+   151→      ) : arms === 'grip' ? (
+   152→        <>
+   153→          <path d="M -24 6 C -34 10, -42 12, -50 12" stroke="#33271d" strokeWidth="6.5" strokeLinecap="round" fill="none" />
+   154→          <path d="M 26 4 C 40 2, 52 -4, 62 -10" stroke="#33271d" strokeWidth="6.5" strokeLinecap="round" fill="none" />
+   155→          <circle cx="-52" cy="12" r="4.6" fill="#8a6a3a" stroke="#2c2118" strokeWidth="1.4" />
+   156→          <circle cx="64" cy="-11" r="4.6" fill="#8a6a3a" stroke="#2c2118" strokeWidth="1.4" />
+   157→        </>
+   158→      ) : (
+   159→        <>
+   160→          <path d="M -28 8 C -36 16, -40 24, -41 32" stroke="#33271d" strokeWidth="6.5" strokeLinecap="round" fill="none" />
+   161→          <path d="M 28 8 C 36 16, 40 24, 41 32" stroke="#33271d" strokeWidth="6.5" strokeLinecap="round" fill="none" />
+   162→          <circle cx="-41" cy="34" r="4.6" fill="#8a6a3a" stroke="#2c2118" strokeWidth="1.4" />
+   163→          <circle cx="41" cy="34" r="4.6" fill="#8a6a3a" stroke="#2c2118" strokeWidth="1.4" />
+   164→        </>
+   165→      )}
+   166→      {/* цоколь-бронза */}
+   167→      <rect x="-19" y="22" width="38" height="20" rx="4" fill="#8a6a3a" stroke="#4d3a1c" strokeWidth="2" />
+   168→      <path d="M -19 29 H 19 M -19 35 H 19" stroke="#6d5228" strokeWidth="1.6" />
+   169→      <circle cx="-12" cy="25.5" r="1.5" fill="#4d3a1c" />
+   170→      <circle cx="12" cy="25.5" r="1.5" fill="#4d3a1c" />
+   171→      {/* свечение */}
+   172→      {filament === 'hot' && <circle cx="0" cy="-2" r="40" fill="url(#ah-glow-fire)" opacity="0.45" />}
+   173→      {/* колба — мутноватая, «с налётом лет» */}
+   174→      <circle cx="0" cy="-2" r="30" fill="url(#ah-bulb-old)" stroke="rgba(120,80,20,0.8)" strokeWidth="2.4" />
+   175→      {/* нить накала — в нижней трети колбы, за лицом */}
+   176→      <g className={filament === 'hot' ? 'ah-flicker' : undefined} opacity={filament === 'hot' ? 1 : 0.55}>
+   177→        <path
+   178→          d="M -14 -8 L -14 12 M 14 -8 L 14 12 M -14 4 L -7 -2 L 0 4 L 7 -2 L 14 4"
+   179→          stroke="#5a4018"
+   180→          strokeWidth="2"
+   181→          fill="none"
+   182→        />
+   183→        <path d="M -7 -2 L 0 4 L 7 -2" stroke={filColor} strokeWidth="2.6" fill="none" strokeLinecap="round" />
+   184→        {filament === 'hot' && <circle cx="0" cy="0" r="7" fill="rgba(255,150,60,0.3)" />}
+   185→      </g>
+   186→      <path d="M -13 -14 A 17 17 0 0 1 -2 -19" stroke="rgba(255,255,255,0.65)" strokeWidth="3" strokeLinecap="round" fill="none" />
+   187→      {/* корона */}
+   188→      <g transform={`rotate(${crownTilt} 0 -30)`}>
+   189→        <path d="M -13 -30 L -13 -41 L -6.5 -34.5 L 0 -42 L 6.5 -34.5 L 13 -41 L 13 -30 Z" fill={GOLD} stroke={INK} strokeWidth="1.8" strokeLinejoin="round" />
+   190→        <circle cx="0" cy="-35" r="1.7" fill={RED} stroke={INK} strokeWidth="0.8" />
+   191→        <path d="M -13 -30 H 13" stroke={INK} strokeWidth="1.8" />
+   192→      </g>
+   193→      {/* лицо */}
+   194→      <ellipse cx="-8" cy="-4" rx="3.4" ry="3.8" fill="#fff" />
+   195→      <ellipse cx="8" cy="-4" rx="3.4" ry="3.8" fill="#fff" />
+   196→      {mood === 'calm' ? (
+   197→        <>
+   198→          <circle cx="-7.6" cy="-3.4" r="1.7" fill="#3a2410" />
+   199→          <circle cx="8.4" cy="-3.4" r="1.7" fill="#3a2410" />
+   200→          <path d="M -12 -9.5 L -4 -8.2 M 12 -9.5 L 4 -8.2" stroke="#3a2410" strokeWidth="1.6" strokeLinecap="round" />
+   201→          <path d="M -4 6.5 A 4.4 4.4 0 0 0 4 6.5" stroke="#3a2410" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+   202→        </>
+   203→      ) : (
+   204→        <>
+   205→          <circle cx={-6.8 + f} cy="-3.6" r="1.8" fill={RED} />
+   206→          <circle cx={8.8 + f} cy="-3.6" r="1.8" fill={RED} />
+   207→          {/* тяжёлые брови */}
+   208→          <path d="M -14 -11 L -3.4 -7.4 M 14 -11 L 3.4 -7.4" stroke={INK} strokeWidth="3.2" strokeLinecap="round" />
+   209→          {/* оскал */}
+   210→          <rect x="-7.4" y="4.6" width="14.8" height="6" rx="1.6" fill="#1d0f0d" />
+   211→          <rect x="-5.4" y="5.4" width="3.6" height="3.4" rx="0.8" fill={PAPER} />
+   212→          <rect x="1.8" y="5.4" width="3.6" height="3.4" rx="0.8" fill={PAPER} />
+   213→        </>
+   214→      )}
+   215→      {/* щётинка-щёки */}
+   216→      <path d="M -17 2 l 3 1.5 M -17 7 l 3 -1 M 17 2 l -3 1.5 M 17 7 l -3 -1" stroke="#3a2410" strokeWidth="1.2" strokeLinecap="round" />
+   217→    </g>
+   218→  )
+   219→}
+   220→
+   221→/** ЭнергоВампир — мелкий прислужник. */
+   222→function Vampire({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
+   223→  return (
+   224→    <g transform={`translate(${x} ${y}) scale(${s})`}>
+   225→      <path d="M 0 -14 C -18 -6, -20 8, -16 16 L 0 10 L 16 16 C 20 8, 18 -6, 0 -14 Z" fill="#7a1f2b" stroke="#4d1219" strokeWidth="1.4" />
+   226→      <ellipse cx="0" cy="0" rx="12" ry="15" fill="#3c2c56" stroke="#241a38" strokeWidth="1.4" />
+   227→      <path d="M -11 -8 L -19 -15 L -8 -13 Z M 11 -8 L 19 -15 L 8 -13 Z" fill="#33244a" />
+   228→      <circle cx="-4.5" cy="-4" r="2.6" fill="#ff4d40" className="ah-eyeglow" />
+   229→      <circle cx="4.5" cy="-4" r="2.6" fill="#ff4d40" className="ah-eyeglow" />
+   230→      <path d="M -8.5 -9 L -2.5 -6.8 M 8.5 -9 L 2.5 -6.8" stroke="#1d0f22" strokeWidth="1.8" strokeLinecap="round" />
+   231→      <ellipse cx="0" cy="4.5" rx="4.6" ry="3" fill="#1d0f22" />
+   232→      <path d="M -3.6 3.2 L -1.8 3.2 L -2.7 6 Z M 3.6 3.2 L 1.8 3.2 L 2.7 6 Z" fill="#fff" />
+   233→    </g>
+   234→  )
+   235→}
+   236→
+   237→/* ================================================================== */
+   238→/* Мелкие детали                                                      */
+   239→/* ================================================================== */
+   240→
+   241→function Star4({ x, y, s = 1, fill = GOLD }: { x: number; y: number; s?: number; fill?: string }) {
+   242→  return (
+   243→    <path
+   244→      d={`M ${x} ${y - 5 * s} L ${x + 1.4 * s} ${y - 1.4 * s} L ${x + 5 * s} ${y} L ${x + 1.4 * s} ${y + 1.4 * s} L ${x} ${y + 5 * s} L ${x - 1.4 * s} ${y + 1.4 * s} L ${x - 5 * s} ${y} L ${x - 1.4 * s} ${y - 1.4 * s} Z`}
+   245→      fill={fill}
+   246→    />
+   247→  )
+   248→}
+   249→
+   250→function WaxDrop({ x, y, s = 1, o = 1 }: { x: number; y: number; s?: number; o?: number }) {
+   251→  return (
+   252→    <g transform={`translate(${x} ${y}) scale(${s})`} opacity={o}>
+   253→      <path d="M 0 -7 C 3.4 -2.4, 4.4 0.4, 4.4 2.6 A 4.4 4.4 0 0 1 -4.4 2.6 C -4.4 0.4, -3.4 -2.4, 0 -7 Z" fill="#e8b25c" stroke="#8c5f0f" strokeWidth="1" />
+   254→      <circle cx="-1.4" cy="1.6" r="1.1" fill="rgba(255,255,255,0.65)" />
+   255→    </g>
+   256→  )
+   257→}
+   258→
+   259→function Crate({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
+   260→  return (
+   261→    <g transform={`translate(${x} ${y}) scale(${s})`}>
+   262→      <rect x="-22" y="-20" width="44" height="40" rx="2" fill="#6a4e2e" stroke="#3a2a16" strokeWidth="2" />
+   263→      <path d="M -22 -7 H 22 M -22 7 H 22" stroke="#3a2a16" strokeWidth="1.6" />
+   264→      <path d="M -22 -20 L 22 20" stroke="#3a2a16" strokeWidth="1.2" opacity="0.5" />
+   265→      <path d="M 22 -20 L -22 20" stroke="#3a2a16" strokeWidth="1.2" opacity="0.5" />
+   266→    </g>
+   267→  )
+   268→}
+   269→
+   270→function Beam({ x, y, rot, len = 150 }: { x: number; y: number; rot: number; len?: number }) {
+   271→  return (
+   272→    <g transform={`translate(${x} ${y}) rotate(${rot})`}>
+   273→      <rect x={-len / 2} y="-7" width={len} height="14" rx="1.5" fill="#4a3826" stroke="#2c2014" strokeWidth="1.6" />
+   274→      <path d={`M ${-len / 2 + 8} -7 V 7 M ${len / 2 - 8} -7 V 7`} stroke="#2c2014" strokeWidth="1.2" opacity="0.7" />
+   275→    </g>
+   276→  )
+   277→}
+   278→
+   279→function EyesPair({ x, y, s = 1, o = 1 }: { x: number; y: number; s?: number; o?: number }) {
+   280→  return (
+   281→    <g transform={`translate(${x} ${y}) scale(${s})`} opacity={o}>
+   282→      <circle cx="-6" cy="0" r="3.4" fill="#ff4d40" className="ah-eyeglow" />
+   283→      <circle cx="6" cy="0" r="3.4" fill="#ff4d40" className="ah-eyeglow" />
+   284→      <circle cx="-6" cy="0" r="1.3" fill="#2a0d0d" />
+   285→      <circle cx="6" cy="0" r="1.3" fill="#2a0d0d" />
+   286→    </g>
+   287→  )
+   288→}
+   289→
+   290→/** Дом 7 по улице Светлой. litGround — светится кофейное окно. */
+   291→function House7({ dawn = false, litGround = false }: { dawn?: boolean; litGround?: boolean }) {
+   292→  const win = (x: number, y: number, lit: boolean) => (
+   293→    <g key={`${x}-${y}`}>
+   294→      <rect x={x} y={y} width="26" height="20" rx="1.5" fill={lit ? '#ffd97a' : '#161320'} stroke={INK} strokeWidth="1.8" />
+   295→      <path d={`M ${x + 13} ${y} V ${y + 20} M ${x} ${y + 10} H ${x + 26}`} stroke={INK} strokeWidth="1.4" opacity="0.8" />
+   296→      {lit && <rect x={x} y={y} width="26" height="20" fill="url(#ah-win-glow)" />}
+   297→    </g>
+   298→  )
+   299→  return (
+   300→    <g>
+   301→      {/* стена дома */}
+   302→      <rect x="72" y="58" width="176" height="94" fill="#2c2536" stroke={INK} strokeWidth="2.4" />
+   303→      <rect x="60" y="152" width="200" height="10" fill="#191423" stroke={INK} strokeWidth="2" />
+   304→      {/* крыша */}
+   305→      <path d="M 64 60 L 160 26 L 256 60 Z" fill="#3a3040" stroke={INK} strokeWidth="2.4" />
+   306→      <rect x="146" y="34" width="12" height="14" fill="#221c2c" stroke={INK} strokeWidth="1.6" />
+   307→      {/* чердачное окно */}
+   308→      <circle cx="160" cy="48" r="7" fill={dawn ? '#161320' : '#ffd97a'} stroke={INK} strokeWidth="1.8" />
+   309→      <path d="M 153 48 H 167 M 160 41 V 55" stroke={INK} strokeWidth="1.2" opacity="0.8" />
+   310→      {/* окна: 3 ряда */}
+   311→      <g>
+   312→        {win(84, 76, false)}
+   313→        {win(126, 76, !dawn)}
+   314→        {win(168, 76, false)}
+   315→        {win(210, 76, false)}
+   316→        {win(84, 104, false)}
+   317→        {win(126, 104, false)}
+   318→        {win(168, 104, !dawn)}
+   319→        {win(210, 104, false)}
+   320→        {win(88, 132, litGround)}
+   321→        {win(130, 132, false)}
+   322→        {win(168, 132, false)}
+   323→        {win(208, 132, false)}
+   324→      </g>
+   325→      {/* дверца подвала + счётчик */}
+   326→      <rect x="252" y="118" width="26" height="34" fill="#1d1826" stroke={INK} strokeWidth="2" />
+   327→      <path d="M 252 135 H 278" stroke={INK} strokeWidth="1.4" />
+   328→      <circle cx="265" cy="127" r="3.2" fill="#d8d3c2" stroke={INK} strokeWidth="1.2" />
+   329→      <path d="M 265 127 L 267.4 124.6" stroke={INK} strokeWidth="1.2" className={dawn ? undefined : 'ah-spin-slow'} style={{ transformOrigin: '265px 127px' }} />
+   330→      {/* труба + дым */}
+   331→      <rect x="196" y="30" width="12" height="16" fill="#3a3040" stroke={INK} strokeWidth="1.8" />
+   332→      <circle cx="206" cy="22" r="4" fill="rgba(244,238,218,0.16)" />
+   333→      <circle cx="214" cy="14" r="5.4" fill="rgba(244,238,218,0.12)" />
+   334→      <circle cx="224" cy="7" r="6.6" fill="rgba(244,238,218,0.08)" />
+   335→      {/* провода */}
+   336→      <path d="M 64 62 C 30 70, 14 76, 0 84" stroke={INK} strokeWidth="1.6" fill="none" opacity="0.7" />
+   337→      <path d="M 64 68 C 34 78, 16 86, 0 96" stroke={INK} strokeWidth="1.6" fill="none" opacity="0.5" />
+   338→    </g>
+   339→  )
+   340→}
+   341→
+   342→/** Кружка с паром. */
+   343→function Mug({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
+   344→  return (
+   345→    <g transform={`translate(${x} ${y}) scale(${s})`}>
+   346→      <path d="M 0 12 C -3 10, -5 6, -3 4 C 0 6, 3 6, 5 4 C 7 6, 5 10, 2 12" stroke="rgba(244,238,218,0.5)" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+   347→      <rect x="-8" y="12" width="16" height="12" rx="2.5" fill={PAPER} stroke={INK} strokeWidth="1.6" />
+   348→      <path d="M 8 15 Q 13 15 12 18.6 Q 11 21.4 8 20.6" stroke={INK} strokeWidth="1.6" fill="none" />
+   349→    </g>
+   350→  )
+   351→}
+   352→
+   353→/* ================================================================== */
+   354→/* Сцены                                                              */
+   355→/* ================================================================== */
+   356→
+   357→function SceneHouseNight() {
+   358→  return (
+   359→    <g>
+   360→      <rect width="320" height="180" fill="#141a2b" />
+   361→      {[
+   362→        [28, 24], [60, 44], [96, 18], [140, 30], [232, 20], [268, 40], [296, 26], [310, 60], [40, 84], [284, 78],
+   363→      ].map(([sx, sy], i) => (
+   364→        <circle key={i} cx={sx} cy={sy} r={i % 3 === 0 ? 1.6 : 1} fill="#f4eeda" opacity={0.5 + (i % 3) * 0.2} />
+   365→      ))}
+   366→      <circle cx="38" cy="34" r="15" fill="#f4eeda" />
+   367→      <circle cx="33" cy="30" r="12" fill="#141a2b" />
+   368→      <House7 />
+   369→      <rect y="160" width="320" height="20" fill="#0d1117" />
+   370→      <path d="M 0 160 H 320" stroke={INK} strokeWidth="2" />
+   371→      <path d="M 40 176 H 66 M 96 176 H 122 M 152 176 H 178 M 208 176 H 234 M 264 176 H 290" stroke="rgba(244,238,218,0.22)" strokeWidth="2" />
+   372→    </g>
+   373→  )
+   374→}
+   375→
+   376→function SceneDawnHouse() {
+   377→  return (
+   378→    <g>
+   379→      <rect width="320" height="180" fill="url(#ah-dawn-sky)" />
+   380→      <circle cx="272" cy="128" r="26" fill="#ffca6b" />
+   381→      <circle cx="272" cy="128" r="36" fill="none" stroke="#ffca6b" strokeWidth="1.6" opacity="0.5" />
+   382→      <circle cx="272" cy="128" r="46" fill="none" stroke="#ffca6b" strokeWidth="1.2" opacity="0.25" />
+   383→      <path d="M 60 96 q 6 -5 12 0 M 92 78 q 6 -5 12 0 M 226 66 q 6 -5 12 0" stroke="#2c2536" strokeWidth="2" fill="none" strokeLinecap="round" />
+   384→      <House7 dawn litGround />
+   385→      <rect y="160" width="320" height="20" fill="#241a1a" />
+   386→      <path d="M 0 160 H 320" stroke={INK} strokeWidth="2" />
+   387→      <Vzhik x={252} y={142} s={0.9} flip={1} mood="happy" cape={1.5} />
+   388→      <path d="M 30 172 H 52 M 76 172 H 98 M 118 172 H 140 M 160 172 H 182" stroke="rgba(34,30,23,0.5)" strokeWidth="2" />
+   389→    </g>
+   390→  )
+   391→}
+   392→
+   393→function SceneTelegram() {
+   394→  return (
+   395→    <g>
+   396→      <rect width="320" height="180" fill="#1d2536" />
+   397→      {/* полка с папками */}
+   398→      <rect x="228" y="34" width="76" height="5" fill="#3a3040" stroke={INK} strokeWidth="1.6" />
+   399→      {[
+   400→        [236, 22, '#c8402e'], [250, 24, '#ffd23f'], [262, 21, '#2e7d43'], [276, 25, '#6a8ab2'],
+   401→      ].map(([bx, bh, bf], i) => (
+   402→        <rect key={i} x={bx as number} y={39 - (bh as number)} width="11" height={bh as number} rx="1" fill={bf as string} stroke={INK} strokeWidth="1.4" />
+   403→      ))}
+   404→      {/* конус света от лампы */}
+   405→      <polygon points="66,52 24,152 132,152" fill="rgba(255,223,138,0.13)" />
+   406→      {/* стол */}
+   407→      <rect x="30" y="118" width="260" height="14" rx="2" fill="#5a4632" stroke={INK} strokeWidth="2.2" />
+   408→      <rect x="44" y="132" width="10" height="34" fill="#463524" stroke={INK} strokeWidth="1.8" />
+   409→      <rect x="266" y="132" width="10" height="34" fill="#463524" stroke={INK} strokeWidth="1.8" />
+   410→      {/* лампа на столе */}
+   411→      <path d="M 66 118 V 88 L 84 72" stroke={INK} strokeWidth="3.4" fill="none" strokeLinecap="round" />
+   412→      <path d="M 74 62 L 94 74 L 86 88 L 66 76 Z" fill="#2e7d43" stroke={INK} strokeWidth="2" />
+   413→      <ellipse cx="80" cy="74" rx="5" ry="3.4" fill="#ffd97a" />
+   414→      {/* телеграмма */}
+   415→      <g transform="rotate(-2 160 96)">
+   416→        <rect x="104" y="64" width="118" height="62" fill={PAPER} stroke={INK} strokeWidth="2.2" />
+   417→        <path d="M 104 64 l 10 6 l 10 -6 l 10 6 l 10 -6 l 10 6 l 10 -6 l 10 6 l 10 -6 l 10 6 l 10 -6 l 10 6" fill="none" stroke="#c8402e" strokeWidth="1.6" />
+   418→        <path d="M 112 84 H 200 M 112 94 H 210 M 112 104 H 186 M 112 114 H 168" stroke="rgba(34,30,23,0.55)" strokeWidth="2" strokeDasharray="7 3" />
+   419→        <g transform="rotate(-9 190 112)">
+   420→          <rect x="156" y="102" width="62" height="20" fill="none" stroke={RED} strokeWidth="2.4" />
+   421→          <text x="187" y="116.5" textAnchor="middle" fontFamily="Nunito, sans-serif" fontWeight="900" fontSize="12" letterSpacing="2.5" fill={RED}>
+   422→            СРОЧНО
+   423→          </text>
+   424→        </g>
+   425→        <path d="M 116 78 h 8 v 8 h -8 z" fill={GOLD} stroke={INK} strokeWidth="1.2" />
+   426→        <path d="M 117.4 79.4 l 5.2 5.2 M 122.6 79.4 l -5.2 5.2" stroke={INK} strokeWidth="1.1" />
+   427→      </g>
+   428→      {/* карандаш */}
+   429→      <g transform="rotate(24 236 128)">
+   430→        <rect x="222" y="124" width="30" height="5" rx="1" fill="#e8b25c" stroke={INK} strokeWidth="1.2" />
+   431→        <path d="M 252 124 l 6 2.5 l -6 2.5 Z" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+   432→      </g>
+   433→      <rect y="152" width="320" height="28" fill="#141a26" />
+   434→    </g>
+   435→  )
+   436→}
+   437→
+   438→function SceneDispatchWarn() {
+   439→  return (
+   440→    <g>
+   441→      <rect width="320" height="180" fill="#1d2536" />
+   442→      {/* схема дома на стене */}
+   443→      <rect x="150" y="24" width="120" height="76" fill={PAPER} stroke={INK} strokeWidth="2.2" />
+   444→      <path d="M 158 100 V 40 H 262 V 100" stroke="rgba(34,30,23,0.6)" strokeWidth="1.8" fill="none" />
+   445→      <path d="M 176 40 V 100 M 210 40 V 100 M 244 40 V 100 M 158 62 H 262" stroke="rgba(34,30,23,0.35)" strokeWidth="1.2" />
+   446→      <rect x="216" y="84" width="12" height="12" fill="#c8402e" className="ah-blink" />
+   447→      <text x="210" y="32" fontFamily="Nunito, sans-serif" fontWeight="900" fontSize="9" letterSpacing="1.5" fill={INK}>
+   448→        ДОМ № 7
+   449→      </text>
+   450→      <path d="M 222 90 l 2 -3.4 l 2 3.4 z" fill={PAPER} />
+   451→      {/* диспетчер — силуэт спиной */}
+   452→      <g>
+   453→        <ellipse cx="86" cy="102" rx="26" ry="30" fill="#141a26" />
+   454→        <circle cx="86" cy="66" r="14" fill="#141a26" />
+   455→        <rect x="70" y="52" width="32" height="7" rx="3" fill="#141a26" />
+   456→        <circle cx="86" cy="48" r="5" fill="#141a26" />
+   457→        <path d="M 72 78 a 14 14 0 0 1 28 0" fill="none" stroke="rgba(255,223,138,0.25)" strokeWidth="2" />
+   458→      </g>
+   459→      {/* стол, телефон, кружка */}
+   460→      <rect x="30" y="118" width="260" height="14" rx="2" fill="#5a4632" stroke={INK} strokeWidth="2.2" />
+   461→      <rect x="44" y="132" width="10" height="34" fill="#463524" stroke={INK} strokeWidth="1.8" />
+   462→      <rect x="266" y="132" width="10" height="34" fill="#463524" stroke={INK} strokeWidth="1.8" />
+   463→      <rect x="120" y="104" width="34" height="15" rx="3" fill="#2e2a3a" stroke={INK} strokeWidth="1.8" />
+   464→      <circle cx="127" cy="111.5" r="2" fill="#d8d3c2" />
+   465→      <path d="M 148 111 q 5 0 4.6 4" stroke={INK} strokeWidth="1.6" fill="none" />
+   466→      <Mug x={186} y={100} s={1.1} />
+   467→      <rect y="152" width="320" height="28" fill="#141a26" />
+   468→    </g>
+   469→  )
+   470→}
+   471→
+   472→function SceneVzhikSalute() {
+   473→  const rays = Array.from({ length: 12 }, (_, i) => {
+   474→    const a1 = (i * Math.PI) / 6
+   475→    const a2 = ((i + 0.5) * Math.PI) / 6
+   476→    const R = 190
+   477→    return (
+   478→      <polygon
+   479→        key={i}
+   480→        points={`160,104 ${160 + Math.cos(a1) * R},${104 + Math.sin(a1) * R} ${160 + Math.cos(a2) * R},${104 + Math.sin(a2) * R}`}
+   481→        fill={GOLD}
+   482→        opacity={0.09}
+   483→      />
+   484→    )
+   485→  })
+   486→  return (
+   487→    <g>
+   488→      <rect width="320" height="180" fill="#17131f" />
+   489→      {rays}
+   490→      <circle cx="160" cy="104" r="58" fill="rgba(255,210,63,0.14)" />
+   491→      <ellipse cx="160" cy="150" rx="46" ry="7" fill="rgba(0,0,0,0.4)" />
+   492→      <Vzhik x={160} y={102} s={2.5} flip={1} mood="determined" cape={1.6} />
+   493→      <Star4 x={92} y={54} s={1.3} />
+   494→      <Star4 x={230} y={42} s={1} />
+   495→      <Star4 x={252} y={112} s={0.9} />
+   496→      <Star4 x={72} y={124} s={0.9} />
+   497→      <path d="M 60 150 H 118 M 202 150 H 260" stroke="rgba(255,210,63,0.5)" strokeWidth="2.4" strokeDasharray="10 6" />
+   498→    </g>
+   499→  )
+   500→}
+   501→
+   502→function SceneVzhikLight() {
+   503→  return (
+   504→    <g>
+   505→      <rect width="320" height="180" fill="#0d0b12" />
+   506→      <polygon points="160,74 66,180 254,180" fill="url(#ah-cone)" />
+   507→      <Vampire x={54} y={158} s={0.9} />
+   508→      <Vampire x={272} y={162} s={0.9} />
+   509→      <ellipse cx="160" cy="152" rx="40" ry="6" fill="rgba(255,223,138,0.25)" />
+   510→      <Vzhik x={160} y={96} s={2.3} flip={1} mood="determined" cape={1.7} />
+   511→      <Star4 x={104} y={40} s={1.1} />
+   512→      <Star4 x={222} y={34} s={0.9} />
+   513→      <Star4 x={258} y={86} s={0.8} />
+   514→      <path d="M 250 22 l 4 8 l -9 1 l 7 7" stroke={GOLD} strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+   515→      <path d="M 62 30 l -3 9 l 9 -1 l -6 8" stroke={GOLD} strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+   516→    </g>
+   517→  )
+   518→}
+   519→
+   520→function SceneWaxTrail() {
+   521→  return (
+   522→    <g>
+   523→      <rect width="320" height="180" fill="#241d2b" />
+   524→      {/* панель и пол */}
+   525→      <path d="M 0 118 H 320" stroke="#171219" strokeWidth="2" />
+   526→      <rect y="118" width="320" height="62" fill="#171219" />
+   527→      <path d="M 0 140 H 320 M 0 162 H 320" stroke="rgba(244,238,218,0.08)" strokeWidth="1.4" />
+   528→      <path d="M 60 118 V 180 M 130 118 V 180 M 200 118 V 180 M 262 118 V 180" stroke="rgba(244,238,218,0.05)" strokeWidth="1.4" />
+   529→      {/* плинтус */}
+   530→      <rect y="114" width="320" height="6" fill="#2c2334" stroke={INK} strokeWidth="1.4" />
+   531→      {/* дверь справа */}
+   532→      <rect x="284" y="52" width="30" height="66" fill="#1a1522" stroke={INK} strokeWidth="2" />
+   533→      <circle cx="290" cy="86" r="2" fill="#8a8171" />
+   534→      {/* след воска: крупные капли к мелким */}
+   535→      <WaxDrop x={252} y={136} s={1.5} />
+   536→      <WaxDrop x={216} y={139} s={1.25} o={0.95} />
+   537→      <WaxDrop x={184} y={142} s={1.05} o={0.9} />
+   538→      <WaxDrop x={158} y={145} s={0.9} o={0.8} />
+   539→      <path d="M 150 146 C 138 148, 130 149, 120 149" stroke="#e8b25c" strokeWidth="2" strokeDasharray="1 6" fill="none" strokeLinecap="round" opacity="0.7" />
+   540→      <Vzhik x={62} y={108} s={1.35} flip={1} mood="gasp" cape={1.2} />
+   541→      {/* тьма справа */}
+   542→      <rect x="238" width="82" height="180" fill="url(#ah-darkness)" />
+   543→      <EyesPair x={296} y={96} s={1.2} />
+   544→    </g>
+   545→  )
+   546→}
+   547→
+   548→function SceneEyesDark() {
+   549→  return (
+   550→    <g>
+   551→      <rect width="320" height="180" fill="#0a080c" />
+   552→      <ellipse cx="160" cy="90" rx="150" ry="86" fill="#120d16" opacity="0.7" />
+   553→      {/* царапины на стене */}
+   554→      <path d="M 40 44 l 14 20 M 52 40 l 10 22 M 236 36 l 12 18 M 248 34 l 8 18" stroke="rgba(244,238,218,0.1)" strokeWidth="1.6" />
+   555→      <EyesPair x={228} y={70} s={2.4} />
+   556→      <EyesPair x={70} y={116} s={1.2} o={0.75} />
+   557→      <EyesPair x={262} y={136} s={0.8} o={0.5} />
+   558→      {/* пол с воском в темноте */}
+   559→      <path d="M 0 150 H 320" stroke="rgba(244,238,218,0.12)" strokeWidth="1.6" />
+   560→      <WaxDrop x={140} y={158} s={1.1} o={0.35} />
+   561→      <WaxDrop x={104} y={160} s={0.9} o={0.28} />
+   562→      <WaxDrop x={76} y={162} s={0.75} o={0.22} />
+   563→    </g>
+   564→  )
+   565→}
+   566→
+   567→function SceneBaronBalcony() {
+   568→  return (
+   569→    <g>
+   570→      <rect width="320" height="180" fill="#2b2118" />
+   571→      {/* доски чердака */}
+   572→      <path d="M 0 30 H 320 M 0 64 H 320 M 0 98 H 320 M 0 132 H 320" stroke="rgba(34,30,23,0.35)" strokeWidth="1.6" />
+   573→      <Beam x={70} y={40} rot={-14} len={170} />
+   574→      <Beam x={266} y={30} rot={12} len={130} />
+   575→      {/* мансардное окно с лучом */}
+   576→      <rect x="18" y="18" width="26" height="20" rx="2" fill="#0e1420" stroke={INK} strokeWidth="2" />
+   577→      <path d="M 31 18 V 38 M 18 28 H 44" stroke={INK} strokeWidth="1.2" />
+   578→      <polygon points="44,26 150,140 96,150" fill="rgba(190,210,255,0.07)" />
+   579→      {/* ящики */}
+   580→      <Crate x={276} y={140} s={1.15} />
+   581→      <Crate x={300} y={166} s={0.9} />
+   582→      {/* гарф с мёртвой лампочкой */}
+   583→      <path d="M 150 0 V 26" stroke={INK} strokeWidth="2" />
+   584→      <circle cx="150" cy="34" r="8" fill="#241d14" stroke={INK} strokeWidth="1.8" />
+   585→      <path d="M 145 32 L 155 36" stroke="#3a2c14" strokeWidth="1.4" />
+   586→      <path d="M 120 22 q 12 10 22 4 M 176 16 q -8 8 -18 6" stroke="rgba(244,238,218,0.14)" strokeWidth="1.2" fill="none" />
+   587→      {/* ящик-трибуна */}
+   588→      <Crate x={152} y={166} s={1.3} />
+   589→      {/* вампиры на балках */}
+   590→      <Vampire x={242} y={54} s={0.95} />
+   591→      <Vampire x={64} y={86} s={0.8} />
+   592→      <ellipse cx="152" cy="170" rx="60" ry="6" fill="rgba(0,0,0,0.4)" />
+   593→      {/* БАРОН */}
+   594→      <Baron x={152} y={100} s={1.65} flip={1} mood="angry" filament="hot" arms="spread" />
+   595→      <path d="M 60 162 H 92 M 214 162 H 246" stroke="rgba(34,30,23,0.6)" strokeWidth="2" />
+   596→    </g>
+   597→  )
+   598→}
+   599→
+   600→function SceneBaronRage() {
+   601→  return (
+   602→    <g>
+   603→      <rect width="320" height="180" fill="#1a0d0d" />
+   604→      <circle cx="160" cy="96" r="88" fill="#2a1210" opacity="0.8" />
+   605→      {/* молнии */}
+   606→      <path d="M 58 44 l 10 16 l -16 2 l 12 18" stroke={GOLD} strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" className="ah-flicker" />
+   607→      <path d="M 262 40 l -10 18 l 17 1 l -13 19" stroke={GOLD} strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" className="ah-flicker" />
+   608→      <path d="M 44 128 l 12 10 l -6 10" stroke="#ff8a3c" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.8" />
+   609→      <Baron x={160} y={102} s={2.9} flip={1} mood="angry" filament="hot" arms="spread" />
+   610→      {/* пар */}
+   611→      <circle cx="74" cy="132" r="9" fill="rgba(244,238,218,0.16)" />
+   612→      <circle cx="62" cy="120" r="6.6" fill="rgba(244,238,218,0.13)" />
+   613→      <circle cx="248" cy="128" r="8" fill="rgba(244,238,218,0.16)" />
+   614→      <circle cx="260" cy="116" r="5.8" fill="rgba(244,238,218,0.13)" />
+   615→    </g>
+   616→  )
+   617→}
+   618→
+   619→function SceneActPaper() {
+   620→  return (
+   621→    <g>
+   622→      <rect width="320" height="180" fill="#1d2536" />
+   623→      {/* стол-конторка */}
+   624→      <rect x="0" y="140" width="320" height="40" fill="#141a26" />
+   625→      <rect x="28" y="30" width="164" height="112" transform="rotate(-2 110 86)" fill={PAPER} stroke={INK} strokeWidth="2.4" />
+   626→      {/* бланк акта */}
+   627→      <g transform="rotate(-2 110 86)">
+   628→        <rect x="28" y="30" width="164" height="16" fill="#efe7cd" />
+   629→        <text x="110" y="42.5" textAnchor="middle" fontFamily="Nunito, sans-serif" fontWeight="900" fontSize="11" letterSpacing="2" fill={INK}>
+   630→          АКТ · ЭГ-06
+   631→        </text>
+   632→        <path d="M 38 58 H 180 M 38 70 H 168 M 38 82 H 182 M 38 94 H 150 M 38 106 H 174" stroke="rgba(34,30,23,0.5)" strokeWidth="2" strokeDasharray="6 4" />
+   633→        <path d="M 36 34 v 104" stroke="rgba(200,64,46,0.5)" strokeWidth="1.4" />
+   634→        {/* клякса воска */}
+   635→        <path d="M 142 92 c 6 -3 12 0 12 5 c 0 5 -7 7 -12 6 c -6 -1 -8 -4 -6 -8 Z" fill="#e8b25c" opacity="0.85" />
+   636→        <circle cx="147" cy="98" r="2.6" fill="#c88f3a" opacity="0.7" />
+   637→        <g transform="rotate(-8 156 118)">
+   638→          <ellipse cx="156" cy="118" rx="17" ry="10" fill="none" stroke="#2e7d43" strokeWidth="2" />
+   639→          <path d="M 145 118 q 11 6 22 0" stroke="#2e7d43" strokeWidth="1.4" fill="none" />
+   640→        </g>
+   641→      </g>
+   642→      {/* лампа сверху */}
+   643→      <path d="M 250 0 V 30" stroke={INK} strokeWidth="2" />
+   644→      <path d="M 236 30 h 28 l -6 12 h -16 Z" fill="#2e2a3a" stroke={INK} strokeWidth="1.8" />
+   645→      <ellipse cx="250" cy="43" rx="6" ry="3" fill="#ffd97a" />
+   646→      <polygon points="250,44 196,140 304,140" fill="rgba(255,223,138,0.1)" />
+   647→      {/* Вжик изучает */}
+   648→      <Vzhik x={244} y={104} s={1.45} flip={-1} mood="determined" cape={1.25} />
+   649→      <ellipse cx="244" cy="132" rx="26" ry="4.4" fill="rgba(0,0,0,0.4)" />
+   650→    </g>
+   651→  )
+   652→}
+   653→
+   654→function SceneBaronShield() {
+   655→  return (
+   656→    <g>
+   657→      <rect width="320" height="180" fill="#23201c" />
+   658→      {/* полоса предупреждения */}
+   659→      <rect y="146" width="320" height="14" fill="url(#ah-warn)" />
+   660→      <path d="M 0 146 H 320" stroke={INK} strokeWidth="2" />
+   661→      {/* щит-панель */}
+   662→      <rect x="170" y="26" width="122" height="108" rx="3" fill="#3a3a3f" stroke={INK} strokeWidth="2.4" />
+   663→      <path d="M 170 60 H 292" stroke={INK} strokeWidth="1.6" />
+   664→      <circle cx="186" cy="43" r="4" fill="#ff5a4e" className="ah-blink" />
+   665→      <circle cx="202" cy="43" r="4" fill="#2a2a30" stroke={INK} strokeWidth="1.4" />
+   666→      {/* провода */}
+   667→      <path d="M 172 80 C 140 84, 120 96, 96 96" stroke={RED} strokeWidth="3" fill="none" />
+   668→      <path d="M 290 80 C 306 88, 310 104, 306 120" stroke={RED} strokeWidth="3" fill="none" />
+   669→      <circle cx="96" cy="96" r="4" fill="#ff8a3c" className="ah-flicker" />
+   670→      <circle cx="306" cy="120" r="4" fill="#ff8a3c" className="ah-flicker" />
+   671→      {/* рубильник */}
+   672→      <rect x="214" y="72" width="34" height="52" rx="3" fill="#2a2a30" stroke={INK} strokeWidth="2" />
+   673→      <circle cx="222" cy="80" r="4.6" fill="#8a8a8a" stroke={INK} strokeWidth="1.6" />
+   674→      <circle cx="240" cy="80" r="4.6" fill="#8a8a8a" stroke={INK} strokeWidth="1.6" />
+   675→      <g transform="rotate(-28 231 80)">
+   676→        <rect x="227.5" y="80" width="7" height="40" rx="3" fill="#d8d3c2" stroke={INK} strokeWidth="1.8" />
+   677→        <circle cx="231" cy="122" r="6" fill="#c8402e" stroke={INK} strokeWidth="1.8" />
+   678→      </g>
+   679→      {/* знак «высокое напряжение» */}
+   680→      <g transform="translate(256 122)">
+   681→        <path d="M 0 -14 L 13 9 H -13 Z" fill={GOLD} stroke={INK} strokeWidth="2" strokeLinejoin="round" />
+   682→        <path d="M 1.6 -6 L -4 1.4 h 3.4 L -2 8 L 4 0.2 h -3.4 Z" fill={INK} />
+   683→      </g>
+   684→      {/* барон тянет рубильник */}
+   685→      <ellipse cx="118" cy="152" rx="52" ry="6" fill="rgba(0,0,0,0.4)" />
+   686→      <Baron x={116} y={96} s={1.55} flip={1} mood="angry" filament="hot" arms="grip" />
+   687→    </g>
+   688→  )
+   689→}
+   690→
+   691→function SceneBaronCool() {
+   692→  return (
+   693→    <g>
+   694→      <rect width="320" height="180" fill="#241d2b" />
+   695→      <path d="M 0 34 H 320 M 0 70 H 320 M 0 106 H 320" stroke="rgba(34,30,23,0.3)" strokeWidth="1.4" />
+   696→      {/* мансардное окно и лунный луч */}
+   697→      <rect x="24" y="16" width="30" height="22" rx="2" fill="#0e1420" stroke={INK} strokeWidth="2" />
+   698→      <path d="M 39 16 V 38 M 24 27 H 54" stroke={INK} strokeWidth="1.2" />
+   699→      <polygon points="54,26 172,150 118,158" fill="rgba(190,210,255,0.08)" />
+   700→      {/* пылинки */}
+   701→      {[
+   702→        [84, 60], [102, 88], [124, 108], [96, 122], [146, 84],
+   703→      ].map(([dx, dy], i) => (
+   704→        <circle key={i} cx={dx} cy={dy} r="1.4" fill="rgba(244,238,218,0.3)" />
+   705→      ))}
+   706→      {/* ящики-лежанка */}
+   707→      <Crate x={196} y={146} s={1.5} />
+   708→      {/* барон усталый, нить тёплая но тусклая */}
+   709→      <Baron x={192} y={92} s={1.5} flip={-1} mood="calm" filament="dim" arms="down" crownTilt={-8} />
+   710→      {/* плащ стекает по ящику */}
+   711→      <path d="M 158 120 C 150 136, 152 150, 160 160 L 176 156 C 168 144, 168 130, 172 118 Z" fill="#4a3a2e" opacity="0.8" />
+   712→      <ellipse cx="192" cy="164" rx="64" ry="6" fill="rgba(0,0,0,0.4)" />
+   713→    </g>
+   714→  )
+   715→}
+   716→
+   717→function SceneCafeLamp() {
+   718→  return (
+   719→    <g>
+   720→      <rect width="320" height="180" fill="#2a2118" />
+   721→      {/* панель и пол */}
+   722→      <rect y="0" width="320" height="130" fill="#332818" />
+   723→      <path d="M 0 100 H 320" stroke="rgba(34,30,23,0.4)" strokeWidth="1.6" />
+   724→      <rect y="130" width="320" height="50" fill="#241a10" />
+   725→      {/* окно с вывеской */}
+   726→      <rect x="252" y="34" width="52" height="58" rx="2" fill="#141019" stroke={INK} strokeWidth="2.2" />
+   727→      <path d="M 278 34 V 92 M 252 63 H 304" stroke={INK} strokeWidth="1.4" />
+   728→      <rect x="258" y="98" width="40" height="14" rx="2" fill={GOLD} stroke={INK} strokeWidth="1.6" />
+   729→      <text x="278" y="108.5" textAnchor="middle" fontFamily="Nunito, sans-serif" fontWeight="900" fontSize="9" letterSpacing="1.6" fill={INK}>
+   730→        КОФЕ
+   731→      </text>
+   732→      {/* шнур и абажур */}
+   733→      <path d="M 150 0 V 40" stroke={INK} strokeWidth="2.4" />
+   734→      <path d="M 128 62 L 150 40 L 172 62 Q 150 74 128 62 Z" fill="#7a4a2a" stroke={INK} strokeWidth="2.2" />
+   735→      {/* тёплый свет на стол */}
+   736→      <ellipse cx="150" cy="112" rx="72" ry="26" fill="rgba(255,215,122,0.2)" />
+   737→      <polygon points="132,66 168,66 210,116 90,116" fill="rgba(255,215,122,0.12)" />
+   738→      {/* барон как ретро-лампа */}
+   739→      <Baron x={150} y={82} s={0.62} flip={1} mood="calm" filament="hot" arms="down" />
+   740→      {/* стол */}
+   741→      <ellipse cx="150" cy="118" rx="66" ry="10" fill="#5a4632" stroke={INK} strokeWidth="2.2" />
+   742→      <ellipse cx="150" cy="114" rx="66" ry="9" fill="#6a5238" stroke={INK} strokeWidth="2.2" />
+   743→      <rect x="144" y="120" width="12" height="34" fill="#463524" stroke={INK} strokeWidth="1.8" />
+   744→      <ellipse cx="150" cy="156" rx="24" ry="4" fill="rgba(0,0,0,0.4)" />
+   745→      {/* чашки */}
+   746→      <Mug x={116} y={100} s={1} />
+   747→      <Mug x={182} y={100} s={1} />
+   748→      {/* стулья */}
+   749→      <g opacity="0.85">
+   750→        <rect x="44" y="104" width="8" height="44" fill="#463524" stroke={INK} strokeWidth="1.6" />
+   751→        <rect x="44" y="104" width="26" height="7" fill="#5a4632" stroke={INK} strokeWidth="1.6" />
+   752→        <rect x="62" y="112" width="7" height="36" fill="#463524" stroke={INK} strokeWidth="1.6" />
+   753→      </g>
+   754→      <g opacity="0.85">
+   755→        <rect x="264" y="104" width="8" height="44" fill="#463524" stroke={INK} strokeWidth="1.6" />
+   756→        <rect x="250" y="104" width="26" height="7" fill="#5a4632" stroke={INK} strokeWidth="1.6" />
+   757→        <rect x="250" y="112" width="7" height="36" fill="#463524" stroke={INK} strokeWidth="1.6" />
+   758→      </g>
+   759→      {/* Вжик уходит по полу, оглядываясь */}
+   760→      <Vzhik x={66} y={136} s={0.85} flip={1} mood="happy" cape={1.5} />
+   761→      <ellipse cx="66" cy="156" rx="18" ry="3.4" fill="rgba(0,0,0,0.4)" />
+   762→    </g>
+   763→  )
+   764→}
+   765→
+   766→/* ================================================================== */
+   767→/* Реестр кадров                                                      */
+   768→/* ================================================================== */
+   769→
+   770→const SCENES: Record<ArtId, () => React.JSX.Element> = {
+   771→  house_night: SceneHouseNight,
+   772→  telegram: SceneTelegram,
+   773→  vzhik_salute: SceneVzhikSalute,
+   774→  wax_trail: SceneWaxTrail,
+   775→  eyes_dark: SceneEyesDark,
+   776→  baron_balcony: SceneBaronBalcony,
+   777→  baron_rage: SceneBaronRage,
+   778→  act_paper: SceneActPaper,
+   779→  baron_shield: SceneBaronShield,
+   780→  dispatch_warn: SceneDispatchWarn,
+   781→  vzhik_light: SceneVzhikLight,
+   782→  baron_cool: SceneBaronCool,
+   783→  cafe_lamp: SceneCafeLamp,
+   784→  dawn_house: SceneDawnHouse,
+   785→}
+   786→
+   787→export function CutsceneArt({ art, className }: { art: ArtId; className?: string }) {
+   788→  const Scene = SCENES[art]
+   789→  return (
+   790→    <svg
+   791→      viewBox="0 0 320 180"
+   792→      className={className}
+   793→      preserveAspectRatio="xMidYMid meet"
+   794→      role="img"
+   795→      aria-label="Кадр хроники"
+   796→    >
+   797→      <defs>
+   798→        <radialGradient id="ah-glow-warm" cx="0.5" cy="0.5" r="0.5">
+   799→          <stop offset="0%" stopColor="#ffe873" stopOpacity="0.55" />
+   800→          <stop offset="100%" stopColor="#ffe873" stopOpacity="0" />
+   801→        </radialGradient>
+   802→        <radialGradient id="ah-glow-fire" cx="0.5" cy="0.5" r="0.5">
+   803→          <stop offset="0%" stopColor="#ff9a4d" stopOpacity="0.6" />
+   804→          <stop offset="100%" stopColor="#ff9a4d" stopOpacity="0" />
+   805→        </radialGradient>
+   806→        <radialGradient id="ah-bulb" cx="0.38" cy="0.34" r="0.75">
+   807→          <stop offset="0%" stopColor="#fffbd8" />
+   808→          <stop offset="55%" stopColor="#ffe37a" />
+   809→          <stop offset="100%" stopColor="#f5b93c" />
+   810→        </radialGradient>
+   811→        <radialGradient id="ah-bulb-old" cx="0.4" cy="0.36" r="0.78">
+   812→          <stop offset="0%" stopColor="#fff3cf" />
+   813→          <stop offset="60%" stopColor="#f4d488" />
+   814→          <stop offset="100%" stopColor="#d99a45" />
+   815→        </radialGradient>
+   816→        <linearGradient id="ah-darkness" x1="0" y1="0" x2="1" y2="0">
+   817→          <stop offset="0%" stopColor="#0a080c" stopOpacity="0" />
+   818→          <stop offset="100%" stopColor="#0a080c" stopOpacity="0.94" />
+   819→        </linearGradient>
+   820→        <linearGradient id="ah-cone" x1="0" y1="0" x2="0" y2="1">
+   821→          <stop offset="0%" stopColor="#ffdf8a" stopOpacity="0.32" />
+   822→          <stop offset="100%" stopColor="#ffdf8a" stopOpacity="0" />
+   823→        </linearGradient>
+   824→        <linearGradient id="ah-dawn-sky" x1="0" y1="0" x2="0" y2="1">
+   825→          <stop offset="0%" stopColor="#35243f" />
+   826→          <stop offset="55%" stopColor="#a04e50" />
+   827→          <stop offset="100%" stopColor="#ffb95e" />
+   828→        </linearGradient>
+   829→        <linearGradient id="ah-win-glow" x1="0" y1="0" x2="0" y2="1">
+   830→          <stop offset="0%" stopColor="#ffe873" stopOpacity="0.5" />
+   831→          <stop offset="100%" stopColor="#ffe873" stopOpacity="0" />
+   832→        </linearGradient>
+   833→        <pattern id="ah-warn" width="24" height="14" patternUnits="userSpaceOnUse" patternTransform="skewX(-18)">
+   834→          <rect width="24" height="14" fill="#ffd23f" />
+   835→          <rect width="12" height="14" fill="#221e17" />
+   836→        </pattern>
+   837→      </defs>
+   838→      <Scene />
+   839→      {/* лёгкое затемнение по краям кадра — как в кино */}
+   840→      <rect width="320" height="180" fill="url(#ah-vignette)" />
+   841→      <defs>
+   842→        <radialGradient id="ah-vignette" cx="0.5" cy="0.5" r="0.72">
+   843→          <stop offset="62%" stopColor="#000" stopOpacity="0" />
+   844→          <stop offset="100%" stopColor="#000" stopOpacity="0.28" />
+   845→        </radialGradient>
+   846→      </defs>
+   847→    </svg>
+   848→  )
+   849→}
+   850→

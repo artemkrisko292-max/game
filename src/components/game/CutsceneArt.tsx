@@ -132,14 +132,14 @@ function Baron({
   const filColor = filament === 'hot' ? '#ff8a3c' : '#6b4a2e'
   return (
     <g transform={`translate(${x} ${y}) scale(${(s * f).toFixed(3)} ${s})`}>
-      {/* плащ */}
+      {/* плащ — аккуратные плечи, симметрично */}
       <path
-        d="M -6 -20 C -44 -8, -52 26, -44 44 L -6 26 L 34 44 C 44 26, 38 -8, 6 -20 Z"
+        d="M -5 -19 C -32 -10, -40 14, -35 42 L -5 25 L 35 42 C 40 14, 32 -10, 5 -19 Z"
         fill="#4a3a2e"
         stroke="#2c2118"
         strokeWidth="2"
       />
-      <path d="M -6 -18 C -30 -8, -36 18, -32 36 L -6 24 Z" fill="#33271d" opacity="0.6" />
+      <path d="M -5 -17 C -24 -8, -30 14, -27 34 L -5 23 Z" fill="#33271d" opacity="0.55" />
       {/* руки */}
       {arms === 'spread' ? (
         <>
@@ -172,16 +172,16 @@ function Baron({
       {filament === 'hot' && <circle cx="0" cy="-2" r="40" fill="url(#ah-glow-fire)" opacity="0.45" />}
       {/* колба — мутноватая, «с налётом лет» */}
       <circle cx="0" cy="-2" r="30" fill="url(#ah-bulb-old)" stroke="rgba(120,80,20,0.8)" strokeWidth="2.4" />
-      {/* нить накала — в нижней трети колбы, за лицом */}
+      {/* нить накала — в нижней трети колбы, ПОД лицом, чтобы не пересекала черты */}
       <g className={filament === 'hot' ? 'ah-flicker' : undefined} opacity={filament === 'hot' ? 1 : 0.55}>
         <path
-          d="M -14 -8 L -14 12 M 14 -8 L 14 12 M -14 4 L -7 -2 L 0 4 L 7 -2 L 14 4"
+          d="M -11 14 L -11 23 M 11 14 L 11 23 M -11 22 L -5.5 16 L 0 22 L 5.5 16 L 11 22"
           stroke="#5a4018"
           strokeWidth="2"
           fill="none"
         />
-        <path d="M -7 -2 L 0 4 L 7 -2" stroke={filColor} strokeWidth="2.6" fill="none" strokeLinecap="round" />
-        {filament === 'hot' && <circle cx="0" cy="0" r="7" fill="rgba(255,150,60,0.3)" />}
+        <path d="M -5.5 16 L 0 22 L 5.5 16" stroke={filColor} strokeWidth="2.4" fill="none" strokeLinecap="round" />
+        {filament === 'hot' && <circle cx="0" cy="19" r="6" fill="rgba(255,150,60,0.3)" />}
       </g>
       <path d="M -13 -14 A 17 17 0 0 1 -2 -19" stroke="rgba(255,255,255,0.65)" strokeWidth="3" strokeLinecap="round" fill="none" />
       {/* корона */}
@@ -322,11 +322,22 @@ function House7({ dawn = false, litGround = false }: { dawn?: boolean; litGround
         {win(168, 132, false)}
         {win(208, 132, false)}
       </g>
-      {/* дверца подвала + счётчик */}
-      <rect x="252" y="118" width="26" height="34" fill="#1d1826" stroke={INK} strokeWidth="2" />
-      <path d="M 252 135 H 278" stroke={INK} strokeWidth="1.4" />
-      <circle cx="265" cy="127" r="3.2" fill="#d8d3c2" stroke={INK} strokeWidth="1.2" />
-      <path d="M 265 127 L 267.4 124.6" stroke={INK} strokeWidth="1.2" className={dawn ? undefined : 'ah-spin-slow'} style={{ transformOrigin: '265px 127px' }} />
+      {/* дверца подвала — прилегающий к дому люк с двускатной крышкой */}
+      <g>
+        <rect x="248" y="136" width="34" height="16" fill="#1d1826" stroke={INK} strokeWidth="1.8" />
+        <path d="M 246 136 L 265 126 L 284 136 Z" fill="#2c2536" stroke={INK} strokeWidth="1.8" />
+        <circle cx="276" cy="144" r="2.4" fill="#8a8171" stroke={INK} strokeWidth="1" />
+        {/* счётчик на стене рядом */}
+        <rect x="222" y="134" width="18" height="14" rx="1.5" fill="#d8d3c2" stroke={INK} strokeWidth="1.6" />
+        <circle cx="231" cy="141" r="4.4" fill="#f4eeda" stroke={INK} strokeWidth="1.2" />
+        <path
+          d="M 231 141 L 233.4 138.6"
+          stroke={INK}
+          strokeWidth="1.2"
+          className={dawn ? undefined : 'ah-spin-slow'}
+          style={{ transformOrigin: '231px 141px' }}
+        />
+      </g>
       {/* труба + дым */}
       <rect x="196" y="30" width="12" height="16" fill="#3a3040" stroke={INK} strokeWidth="1.8" />
       <circle cx="206" cy="22" r="4" fill="rgba(244,238,218,0.16)" />
@@ -401,16 +412,20 @@ function SceneTelegram() {
       ].map(([bx, bh, bf], i) => (
         <rect key={i} x={bx as number} y={39 - (bh as number)} width="11" height={bh as number} rx="1" fill={bf as string} stroke={INK} strokeWidth="1.4" />
       ))}
-      {/* конус света от лампы */}
-      <polygon points="66,52 24,152 132,152" fill="rgba(255,223,138,0.13)" />
+      {/* настольная лампа — читаемая: основа, стойка, плафан, свет */}
+      <polygon points="100,100 44,152 156,152" fill="rgba(255,223,138,0.13)" />
+      <g>
+        <ellipse cx="78" cy="116" rx="16" ry="4.5" fill="#33271d" stroke={INK} strokeWidth="1.6" />
+        <path d="M 78 116 L 78 84 L 94 70" stroke={INK} strokeWidth="3.6" fill="none" strokeLinecap="round" />
+        <path d="M 78 98 L 90 88" stroke={INK} strokeWidth="2.2" fill="none" strokeLinecap="round" />
+        <path d="M 86 76 L 110 84 L 102 102 L 78 94 Z" fill="#2e7d43" stroke={INK} strokeWidth="2" strokeLinejoin="round" />
+        <ellipse cx="100" cy="98" rx="9" ry="4.4" fill="#ffd97a" stroke={INK} strokeWidth="1.4" />
+        <circle cx="100" cy="98" r="14" fill="url(#ah-glow-warm)" opacity="0.7" />
+      </g>
       {/* стол */}
       <rect x="30" y="118" width="260" height="14" rx="2" fill="#5a4632" stroke={INK} strokeWidth="2.2" />
       <rect x="44" y="132" width="10" height="34" fill="#463524" stroke={INK} strokeWidth="1.8" />
       <rect x="266" y="132" width="10" height="34" fill="#463524" stroke={INK} strokeWidth="1.8" />
-      {/* лампа на столе */}
-      <path d="M 66 118 V 88 L 84 72" stroke={INK} strokeWidth="3.4" fill="none" strokeLinecap="round" />
-      <path d="M 74 62 L 94 74 L 86 88 L 66 76 Z" fill="#2e7d43" stroke={INK} strokeWidth="2" />
-      <ellipse cx="80" cy="74" rx="5" ry="3.4" fill="#ffd97a" />
       {/* телеграмма */}
       <g transform="rotate(-2 160 96)">
         <rect x="104" y="64" width="118" height="62" fill={PAPER} stroke={INK} strokeWidth="2.2" />
@@ -448,15 +463,26 @@ function SceneDispatchWarn() {
         ДОМ № 7
       </text>
       <path d="M 222 90 l 2 -3.4 l 2 3.4 z" fill={PAPER} />
-      {/* диспетчер — силуэт спиной */}
+      {/* ДИСПЕТЧЕР — настольная лампа-дежурный в наушнике, вид спереди */}
       <g>
-        <ellipse cx="86" cy="102" rx="26" ry="30" fill="#141a26" />
-        <circle cx="86" cy="66" r="14" fill="#141a26" />
-        <rect x="70" y="52" width="32" height="7" rx="3" fill="#141a26" />
-        <circle cx="86" cy="48" r="5" fill="#141a26" />
-        <path d="M 72 78 a 14 14 0 0 1 28 0" fill="none" stroke="rgba(255,223,138,0.25)" strokeWidth="2" />
+        {/* стойка-тело за столом */}
+        <path d="M 62 118 V 78" stroke="#33271d" strokeWidth="7" strokeLinecap="round" />
+        {/* голова-плафан */}
+        <path d="M 42 78 L 82 78 L 74 46 L 50 46 Z" fill="#3a5a44" stroke={INK} strokeWidth="2.2" strokeLinejoin="round" />
+        <ellipse cx="62" cy="78" rx="21" ry="6" fill="#ffd97a" stroke={INK} strokeWidth="1.8" />
+        {/* глаза и усытая улыбка на светящемся лице */}
+        <circle cx="55" cy="76" r="2.2" fill={INK} />
+        <circle cx="69" cy="76" r="2.2" fill={INK} />
+        <path d="M 55 82 Q 62 86 69 82" stroke={INK} strokeWidth="1.6" fill="none" strokeLinecap="round" />
+        {/* наушник с микрофоном */}
+        <path d="M 42 62 A 21 21 0 0 1 82 62" stroke={INK} strokeWidth="3" fill="none" />
+        <rect x="37" y="58" width="7" height="11" rx="2.5" fill={INK} />
+        <path d="M 40 69 Q 44 78 54 79" stroke={INK} strokeWidth="2" fill="none" />
+        <circle cx="56" cy="79" r="2.2" fill={INK} />
+        {/* тень на столе */}
+        <ellipse cx="62" cy="119" rx="30" ry="4" fill="rgba(0,0,0,0.35)" />
       </g>
-      {/* стол, телефон, кружка */}
+      {/* стол, телефон, кружка, пульт */}
       <rect x="30" y="118" width="260" height="14" rx="2" fill="#5a4632" stroke={INK} strokeWidth="2.2" />
       <rect x="44" y="132" width="10" height="34" fill="#463524" stroke={INK} strokeWidth="1.8" />
       <rect x="266" y="132" width="10" height="34" fill="#463524" stroke={INK} strokeWidth="1.8" />
@@ -464,6 +490,14 @@ function SceneDispatchWarn() {
       <circle cx="127" cy="111.5" r="2" fill="#d8d3c2" />
       <path d="M 148 111 q 5 0 4.6 4" stroke={INK} strokeWidth="1.6" fill="none" />
       <Mug x={186} y={100} s={1.1} />
+      {/* пульт с лампочками */}
+      <g>
+        <rect x="224" y="108" width="44" height="11" rx="2.5" fill="#2e2a3a" stroke={INK} strokeWidth="1.6" />
+        <circle cx="232" cy="113.5" r="2" fill="#ff5a4e" className="ah-blink" />
+        <circle cx="240" cy="113.5" r="2" fill="#63d471" />
+        <circle cx="248" cy="113.5" r="2" fill="#ffd23f" />
+        <circle cx="256" cy="113.5" r="2" fill="#6a8ab2" />
+      </g>
       <rect y="152" width="320" height="28" fill="#141a26" />
     </g>
   )
@@ -528,9 +562,14 @@ function SceneWaxTrail() {
       <path d="M 60 118 V 180 M 130 118 V 180 M 200 118 V 180 M 262 118 V 180" stroke="rgba(244,238,218,0.05)" strokeWidth="1.4" />
       {/* плинтус */}
       <rect y="114" width="320" height="6" fill="#2c2334" stroke={INK} strokeWidth="1.4" />
-      {/* дверь справа */}
-      <rect x="284" y="52" width="30" height="66" fill="#1a1522" stroke={INK} strokeWidth="2" />
-      <circle cx="290" cy="86" r="2" fill="#8a8171" />
+      {/* дверь справа — с рамой, из щели пробивается тьма и тлут глаза */}
+      <g>
+        <rect x="272" y="40" width="42" height="80" fill="#2c2334" stroke={INK} strokeWidth="2" />
+        <rect x="278" y="46" width="30" height="68" fill="#1a1522" stroke={INK} strokeWidth="2" />
+        <rect x="280" y="48" width="26" height="64" fill="url(#ah-darkness)" opacity="0.85" />
+        <circle cx="291" cy="90" r="2" fill="#8a8171" />
+        <EyesPair x={293} y={70} s={0.75} o={0.9} />
+      </g>
       {/* след воска: крупные капли к мелким */}
       <WaxDrop x={252} y={136} s={1.5} />
       <WaxDrop x={216} y={139} s={1.25} o={0.95} />
@@ -548,18 +587,44 @@ function SceneWaxTrail() {
 function SceneEyesDark() {
   return (
     <g>
+      {/* Тёмный коридор: пол в перспективе, стены, дверь в конце */}
       <rect width="320" height="180" fill="#0a080c" />
-      <ellipse cx="160" cy="90" rx="150" ry="86" fill="#120d16" opacity="0.7" />
+      {/* слабый лунный свет из окна слева */}
+      <polygon points="46,30 86,30 150,150 6,150" fill="rgba(150,170,220,0.06)" />
+      {/* стены коридора сходятся к двери справа */}
+      <polygon points="0,0 218,52 218,128 0,180" fill="#141019" />
+      <polygon points="0,180 218,128 320,128 320,180" fill="#1d1622" />
+      <polygon points="0,0 218,52 320,52 320,0" fill="#100c14" />
+      {/* линии досок на полу */}
+      <path
+        d="M 40 180 L 150 128 M 110 180 L 196 128 M 190 180 L 240 128 M 264 180 L 284 128"
+        stroke="rgba(244,238,218,0.07)"
+        strokeWidth="1.4"
+      />
+      {/* дверной проём в конце коридора */}
+      <rect x="218" y="52" width="102" height="76" fill="#06050a" />
+      <rect x="222" y="56" width="94" height="72" fill="#080610" stroke="#241a2e" strokeWidth="3" />
+      {/* ГЛАВНОЕ: силуэт барона в дверном проёме — корона и два глаза */}
+      <g>
+        <ellipse cx="268" cy="112" rx="26" ry="22" fill="#0d0a12" />
+        <circle cx="268" cy="74" r="16" fill="#120e18" />
+        {/* корона */}
+        <path d="M 260 62 L 260 54 L 264 58 L 268 53 L 272 58 L 276 54 L 276 62 Z" fill="#8a6a1a" opacity="0.85" />
+        {/* глаза */}
+        <EyesPair x={268} y={72} s={1.6} />
+        {/* плечи */}
+        <path d="M 246 96 Q 268 84 290 96 L 290 112 L 246 112 Z" fill="#0d0a12" />
+      </g>
+      {/* слуга слева — только глаза */}
+      <EyesPair x={196} y={92} s={0.9} o={0.8} />
+      {/* след воска уводит к двери */}
+      <WaxDrop x={58} y={152} s={0.7} o={0.35} />
+      <WaxDrop x={92} y={149} s={0.85} o={0.45} />
+      <WaxDrop x={128} y={146} s={1} o={0.6} />
+      <WaxDrop x={164} y={142} s={1.15} o={0.75} />
+      <WaxDrop x={198} y={138} s={1.3} o={0.9} />
       {/* царапины на стене */}
-      <path d="M 40 44 l 14 20 M 52 40 l 10 22 M 236 36 l 12 18 M 248 34 l 8 18" stroke="rgba(244,238,218,0.1)" strokeWidth="1.6" />
-      <EyesPair x={228} y={70} s={2.4} />
-      <EyesPair x={70} y={116} s={1.2} o={0.75} />
-      <EyesPair x={262} y={136} s={0.8} o={0.5} />
-      {/* пол с воском в темноте */}
-      <path d="M 0 150 H 320" stroke="rgba(244,238,218,0.12)" strokeWidth="1.6" />
-      <WaxDrop x={140} y={158} s={1.1} o={0.35} />
-      <WaxDrop x={104} y={160} s={0.9} o={0.28} />
-      <WaxDrop x={76} y={162} s={0.75} o={0.22} />
+      <path d="M 60 74 l 12 17 M 70 70 l 9 19" stroke="rgba(244,238,218,0.08)" strokeWidth="1.6" />
     </g>
   )
 }
@@ -568,10 +633,11 @@ function SceneBaronBalcony() {
   return (
     <g>
       <rect width="320" height="180" fill="#2b2118" />
-      {/* доски чердака */}
+      {/* доски чердака — ровные ряды */}
       <path d="M 0 30 H 320 M 0 64 H 320 M 0 98 H 320 M 0 132 H 320" stroke="rgba(34,30,23,0.35)" strokeWidth="1.6" />
-      <Beam x={70} y={40} rot={-14} len={170} />
-      <Beam x={266} y={30} rot={12} len={130} />
+      {/* стропила — параллельные, под одним углом */}
+      <Beam x={64} y={26} rot={-6} len={150} />
+      <Beam x={252} y={22} rot={-6} len={120} />
       {/* мансардное окно с лучом */}
       <rect x="18" y="18" width="26" height="20" rx="2" fill="#0e1420" stroke={INK} strokeWidth="2" />
       <path d="M 31 18 V 38 M 18 28 H 44" stroke={INK} strokeWidth="1.2" />
@@ -707,8 +773,6 @@ function SceneBaronCool() {
       <Crate x={196} y={146} s={1.5} />
       {/* барон усталый, нить тёплая но тусклая */}
       <Baron x={192} y={92} s={1.5} flip={-1} mood="calm" filament="dim" arms="down" crownTilt={-8} />
-      {/* плащ стекает по ящику */}
-      <path d="M 158 120 C 150 136, 152 150, 160 160 L 176 156 C 168 144, 168 130, 172 118 Z" fill="#4a3a2e" opacity="0.8" />
       <ellipse cx="192" cy="164" rx="64" ry="6" fill="rgba(0,0,0,0.4)" />
     </g>
   )
@@ -729,22 +793,22 @@ function SceneCafeLamp() {
       <text x="278" y="108.5" textAnchor="middle" fontFamily="Nunito, sans-serif" fontWeight="900" fontSize="9" letterSpacing="1.6" fill={INK}>
         КОФЕ
       </text>
-      {/* шнур и абажур */}
-      <path d="M 150 0 V 40" stroke={INK} strokeWidth="2.4" />
-      <path d="M 128 62 L 150 40 L 172 62 Q 150 74 128 62 Z" fill="#7a4a2a" stroke={INK} strokeWidth="2.2" />
+      {/* шнур — барон висит как ретро-лампа, БЕЗ абажура сверху */}
+      <path d="M 150 0 V 26" stroke={INK} strokeWidth="2.4" />
+      <path d="M 150 26 L 146 34 M 150 26 L 154 34" stroke={INK} strokeWidth="1.6" />
       {/* тёплый свет на стол */}
-      <ellipse cx="150" cy="112" rx="72" ry="26" fill="rgba(255,215,122,0.2)" />
-      <polygon points="132,66 168,66 210,116 90,116" fill="rgba(255,215,122,0.12)" />
-      {/* барон как ретро-лампа */}
-      <Baron x={150} y={82} s={0.62} flip={1} mood="calm" filament="hot" arms="down" />
+      <polygon points="150,44 96,116 204,116" fill="rgba(255,215,122,0.14)" />
+      <ellipse cx="150" cy="116" rx="64" ry="16" fill="rgba(255,215,122,0.16)" />
+      {/* барон как ретро-лампа — крупно, нить тёплая, довольный */}
+      <Baron x={150} y={78} s={0.95} flip={1} mood="calm" filament="hot" arms="down" crownTilt={6} />
       {/* стол */}
       <ellipse cx="150" cy="118" rx="66" ry="10" fill="#5a4632" stroke={INK} strokeWidth="2.2" />
       <ellipse cx="150" cy="114" rx="66" ry="9" fill="#6a5238" stroke={INK} strokeWidth="2.2" />
       <rect x="144" y="120" width="12" height="34" fill="#463524" stroke={INK} strokeWidth="1.8" />
       <ellipse cx="150" cy="156" rx="24" ry="4" fill="rgba(0,0,0,0.4)" />
       {/* чашки */}
-      <Mug x={116} y={100} s={1} />
-      <Mug x={182} y={100} s={1} />
+      <Mug x={116} y={98} s={1} />
+      <Mug x={182} y={98} s={1} />
       {/* стулья */}
       <g opacity="0.85">
         <rect x="44" y="104" width="8" height="44" fill="#463524" stroke={INK} strokeWidth="1.6" />

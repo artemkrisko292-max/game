@@ -162,8 +162,8 @@ const HOW_TO = [
   },
   {
     icon: ToggleLeft,
-    title: 'Гаси лишний свет',
-    text: 'Рубильник выключает группу ламп и прекращает слив энергии конусом света.',
+    title: 'Включи все рубильники',
+    text: 'Каждый выключает группу ламп и прекращает слив энергии. Щиток на выходе откроется, только когда переведены ВСЕ рубильники и вставлены предохранители.',
   },
   {
     icon: TriangleAlert,
@@ -504,9 +504,14 @@ export default function EnergoHeroGame() {
         <div className="relative aspect-[16/9] max-md:aspect-[4/5] w-full overflow-hidden rounded-md border-2 border-[#2a2f28] bg-[#0b0d0c] shadow-[0_0_0_6px_rgba(255,255,255,0.03),0_24px_70px_rgba(0,0,0,0.6)]">
           <canvas
             ref={canvasRef}
-            className="absolute inset-0 h-full w-full object-contain"
+            className="absolute inset-0 h-full w-full object-contain [filter:saturate(1.07)_contrast(1.04)]"
             aria-label="Игровое поле ЭнергоГероя"
           />
+
+          {/* Кинематографичные слои: виньетка, зерно, тёплый оттенок */}
+          <div className="ah-cine-warm pointer-events-none absolute inset-0 z-[4]" />
+          <div className="ah-cine-vig pointer-events-none absolute inset-0 z-[4]" />
+          <div className="ah-cine-grain pointer-events-none absolute inset-0 z-[4]" />
 
           {/* Кнопки музыки, звука и паузы */}
           <div className="absolute right-2 top-2 z-20 flex gap-1.5">
