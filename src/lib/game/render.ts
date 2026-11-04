@@ -124,9 +124,9 @@ function drawDepthWash(
   th: Theme,
 ) {
   ctx.fillStyle = th.skyTop
-  ctx.globalAlpha = 0.2
+  ctx.globalAlpha = 0.32
   ctx.fillRect(g.camX - 4, g.camY - 4, VIEW_W + 8, VIEW_H + 8)
-  ctx.fillStyle = 'rgba(8,6,14,0.1)'
+  ctx.fillStyle = 'rgba(8,6,14,0.17)'
   ctx.fillRect(g.camX - 4, g.camY - 4, VIEW_W + 8, VIEW_H + 8)
   ctx.globalAlpha = 1
 }
@@ -2222,15 +2222,16 @@ function drawDecor(ctx: CanvasRenderingContext2D, g: EnergoGame) {
       if (!ok) continue
 
       dctx.save()
-      dctx.globalAlpha = 0.94
+      dctx.globalAlpha = 0.88
       piece.draw(dctx, x, r * TILE, g.frame)
       dctx.restore()
     }
   }
 
-  // Композит на сцену: интерьер приглушён, чуть размыт и мягче по контрасту
+  // Композит на сцену: интерьер сильно приглушён, размыт и уходит в тень —
+  // читается силуэтом на заднем плане и не спорит с игрой
   ctx.save()
-  ctx.filter = 'saturate(0.5) brightness(0.72) contrast(0.95) blur(1px)'
+  ctx.filter = 'saturate(0.36) brightness(0.5) contrast(0.88) blur(1.6px)'
   ctx.drawImage(buf, Math.round(g.camX), Math.round(g.camY))
   ctx.restore()
 }
