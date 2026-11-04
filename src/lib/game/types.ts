@@ -159,7 +159,20 @@ export interface LevelResult {
   fuses: number
   fusesTotal: number
   score: number
+  /** Хронометраж уровня, секунды. */
+  time: number
 }
+
+/** Откуда пришло финальное повреждение — для «акта об аварии». */
+export type DeathCause =
+  | 'vampire'
+  | 'runner'
+  | 'drone'
+  | 'phantom'
+  | 'socket'
+  | 'spikes'
+  | 'fall'
+  | 'drain'
 
 export interface RunSummary {
   score: number
@@ -182,6 +195,10 @@ export interface Snapshot {
   energy: number
   result: LevelResult | null
   summary: RunSummary | null
+  /** Номер текущей попытки уровня (1, 2, 3…). */
+  attempt: number
+  /** Причина обесточивания (заполняется на gameover). */
+  deathCause: DeathCause | null
 }
 
 export interface GameCallbacks {

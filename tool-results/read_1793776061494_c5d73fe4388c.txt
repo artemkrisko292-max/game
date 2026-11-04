@@ -1,0 +1,693 @@
+     1→'use client'
+     2→
+     3→import { useCallback, useEffect, useRef, useState } from 'react'
+     4→import {
+     5→  ChevronRight,
+     6→  DoorOpen,
+     7→  Ghost,
+     8→  Home,
+     9→  Lightbulb,
+    10→  Pause,
+    11→  Play,
+    12→  Plug,
+    13→  RotateCcw,
+    14→  Star,
+    15→  ToggleLeft,
+    16→  TriangleAlert,
+    17→  Volume2,
+    18→  VolumeX,
+    19→  Zap,
+    20→} from 'lucide-react'
+    21→import { EnergoGame, VIEW_H, VIEW_W } from '@/lib/game/engine'
+    22→import type { Phase, Snapshot } from '@/lib/game/types'
+    23→
+    24→const HOW_TO = [
+    25→  {
+    26→    icon: Lightbulb,
+    27→    title: 'Собирай лампочки',
+    28→    text: 'LED-лампочки дают +8 энергии и 50 очков',
+    29→  },
+    30→  {
+    31→    icon: ToggleLeft,
+    32→    title: 'Выключай свет',
+    33→    text: 'Дотяни до рубильника — лампы погаснут, +150 очков',
+    34→  },
+    35→  {
+    36→    icon: TriangleAlert,
+    37→    title: 'Шипы и обвалы',
+    38→    text: 'Ржавая арматура жалит, старые плиты осыпаются под ногами',
+    39→  },
+    40→  {
+    41→    icon: Plug,
+    42→    title: 'Ищи предохранители',
+    43→    text: 'Светящийся ключ открывает запертый щиток на выходе',
+    44→  },
+    45→  {
+    46→    icon: Ghost,
+    47→    title: 'Враги повсюду',
+    48→    text: 'Вампиры, Гонцы, Дроны и Фантомы пьют энергию. Прыгай на голову!',
+    49→  },
+    50→  {
+    51→    icon: DoorOpen,
+    52→    title: 'Беги к щитку',
+    53→    text: 'Шкала энергии тает всё быстрее с каждым уровнем!',
+    54→  },
+    55→]
+    56→
+    57→export default function EnergoHeroGame() {
+    58→  const canvasRef = useRef<HTMLCanvasElement>(null)
+    59→  const gameRef = useRef<EnergoGame | null>(null)
+    60→  const [phase, setPhase] = useState<Phase>('menu')
+    61→  const [snap, setSnap] = useState<Snapshot | null>(null)
+    62→  const [muted, setMuted] = useState(false)
+    63→  const [isTouch, setIsTouch] = useState(false)
+    64→  const [best, setBest] = useState(0)
+    65→
+    66→  useEffect(() => {
+    67→    const canvas = canvasRef.current
+    68→    if (!canvas) return
+    69→    const dpr = Math.min(2, window.devicePixelRatio || 1)
+    70→    canvas.width = VIEW_W * dpr
+    71→    canvas.height = VIEW_H * dpr
+    72→    const ctx = canvas.getContext('2d')
+    73→    if (!ctx) return
+    74→    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    75→
+    76→    const game = new EnergoGame(canvas, {
+    77→      onPhase: (s) => {
+    78→        setPhase(s.phase)
+    79→        setSnap(s)
+    80→        if (s.phase === 'victory') {
+    81→          try {
+    82→            setBest(Number(localStorage.getItem('energohero-best') ?? '0') || 0)
+    83→          } catch {
+    84→            /* ignore */
+    85→          }
+    86→        }
+    87→      },
+    88→    })
+    89→    gameRef.current = game
+    90→    // Отладочный хук (используется автотестами: __energo.loadLevel(n))
+    91→    ;(window as unknown as { __energo?: EnergoGame }).__energo = game
+    92→
+    93→    // Отложенная инициализация некритичного UI-состояния (не блокирует эффект)
+    94→    const raf = requestAnimationFrame(() => {
+    95→      setIsTouch(
+    96→        window.matchMedia('(pointer: coarse)').matches ||
+    97→          'ontouchstart' in window ||
+    98→          window.innerWidth < 768,
+    99→      )
+   100→      try {
+   101→        setBest(Number(localStorage.getItem('energohero-best') ?? '0') || 0)
+   102→      } catch {
+   103→        /* ignore */
+   104→      }
+   105→    })
+   106→    return () => {
+   107→      cancelAnimationFrame(raf)
+   108→      game.destroy()
+   109→      gameRef.current = null
+   110→    }
+   111→  }, [])
+   112→
+   113→  const act = useCallback((action: 'start' | 'begin' | 'retry' | 'next' | 'menu' | 'pause') => {
+   114→    const g = gameRef.current
+   115→    if (!g) return
+   116→    switch (action) {
+   117→      case 'start':
+   118→        g.startRun()
+   119→        break
+   120→      case 'begin':
+   121→        g.beginLevel()
+   122→        break
+   123→      case 'retry':
+   124→        g.retryLevel()
+   125→        break
+   126→      case 'next':
+   127→        g.nextLevel()
+   128→        break
+   129→      case 'menu':
+   130→        g.toMenu()
+   131→        break
+   132→      case 'pause':
+   133→        g.togglePause()
+   134→        break
+   135→    }
+   136→  }, [])
+   137→
+   138→  // Enter — основное действие на оверлеях
+   139→  useEffect(() => {
+   140→    const onKey = (e: KeyboardEvent) => {
+   141→      if (e.code !== 'Enter' && e.code !== 'NumpadEnter' && e.key !== 'Enter')
+   142→        return
+   143→      if (phase === 'menu') act('start')
+   144→      else if (phase === 'intro') act('begin')
+   145→      else if (phase === 'complete') act('next')
+   146→      else if (phase === 'gameover') act('retry')
+   147→      else if (phase === 'victory') act('start')
+   148→      else if (phase === 'paused') act('pause')
+   149→    }
+   150→    window.addEventListener('keydown', onKey)
+   151→    return () => window.removeEventListener('keydown', onKey)
+   152→  }, [phase, act])
+   153→
+   154→  const hold = useCallback(
+   155→    (k: 'left' | 'right' | 'jump') => ({
+   156→      onPointerDown: (e: React.PointerEvent) => {
+   157→        e.preventDefault()
+   158→        gameRef.current?.setTouch(k, true)
+   159→      },
+   160→      onPointerUp: () => gameRef.current?.setTouch(k, false),
+   161→      onPointerLeave: () => gameRef.current?.setTouch(k, false),
+   162→      onPointerCancel: () => gameRef.current?.setTouch(k, false),
+   163→    }),
+   164→    [],
+   165→  )
+   166→
+   167→  const toggleMute = useCallback(() => {
+   168→    const g = gameRef.current
+   169→    if (!g) return
+   170→    g.sfx.muted = !g.sfx.muted
+   171→    setMuted(g.sfx.muted)
+   172→  }, [])
+   173→
+   174→  return (
+   175→    <div className="min-h-screen w-full bg-[#0b120c] bg-[radial-gradient(ellipse_at_top,#142417_0%,#0b120c_60%)] text-emerald-50 flex flex-col items-center justify-center gap-3 p-2 sm:p-4">
+   176→      <header className="flex items-center gap-2 select-none sm:hidden">
+   177→        <Zap className="h-5 w-5 text-amber-300" />
+   178→        <h1 className="text-lg font-black tracking-widest text-emerald-300">
+   179→          ЭНЕРГОГЕРОЙ
+   180→        </h1>
+   181→      </header>
+   182→
+   183→      <main className="w-full max-w-[1080px]">
+   184→        <div className="relative aspect-[16/9] max-md:aspect-[4/5] w-full overflow-hidden rounded-2xl border-2 border-emerald-950 bg-[#0b120c] shadow-[0_0_60px_rgba(52,168,83,0.15)] sm:border-4">
+   185→          <canvas
+   186→            ref={canvasRef}
+   187→            className="absolute inset-0 h-full w-full object-contain"
+   188→            aria-label="Игровое поле ЭнергоГероя"
+   189→          />
+   190→
+   191→          {/* Кнопки звука и паузы */}
+   192→          <div className="absolute right-2 top-2 z-20 flex gap-1.5">
+   193→            <button
+   194→              onClick={toggleMute}
+   195→              aria-label={muted ? 'Включить звук' : 'Выключить звук'}
+   196→              className="flex h-9 w-9 items-center justify-center rounded-full bg-black/45 text-white/90 backdrop-blur-sm transition hover:bg-black/65"
+   197→            >
+   198→              {muted ? (
+   199→                <VolumeX className="h-4 w-4" />
+   200→              ) : (
+   201→                <Volume2 className="h-4 w-4" />
+   202→              )}
+   203→            </button>
+   204→            {(phase === 'playing' || phase === 'paused') && (
+   205→              <button
+   206→                onClick={() => act('pause')}
+   207→                aria-label="Пауза"
+   208→                className="flex h-9 w-9 items-center justify-center rounded-full bg-black/45 text-white/90 backdrop-blur-sm transition hover:bg-black/65"
+   209→              >
+   210→                <Pause className="h-4 w-4" />
+   211→              </button>
+   212→            )}
+   213→          </div>
+   214→
+   215→          {/* ---------- Оверлеи ---------- */}
+   216→          {phase === 'menu' && (
+   217→            <Overlay>
+   218→              <Panel>
+   219→                <div className="flex items-center justify-center gap-3">
+   220→                  <Lightbulb className="ah-float h-8 w-8 text-amber-300 sm:h-10 sm:w-10" />
+   221→                  <h1 className="text-3xl font-black tracking-wider text-emerald-300 drop-shadow-[0_2px_0_rgba(0,0,0,0.5)] sm:text-5xl">
+   222→                    ЭНЕРГОГЕРОЙ
+   223→                  </h1>
+   224→                  <Zap className="ah-float h-8 w-8 text-amber-300 sm:h-10 sm:w-10" />
+   225→                </div>
+   226→                <p className="mx-auto mt-3 max-w-xl text-sm text-emerald-100/80 sm:text-base">
+   227→                  Ты — <b>Вжик</b>, храбрая лампочка в плаще. В доме
+   228→                  разбушевались ЭнергоВампиры, Гонцы и Дроны-пылесосы, а лишний
+   229→                  свет жрёт энергию. 20 уровней — и каждый злее предыдущего!
+   230→                </p>
+   231→                <div className="mt-4 grid grid-cols-2 gap-2 text-left sm:gap-3 lg:grid-cols-3">
+   232→                  {HOW_TO.map((h, i) => (
+   233→                    <div
+   234→                      key={h.title}
+   235→                      className="ah-pop relative rounded-lg border-2 border-emerald-900/80 bg-black/40 p-2.5 sm:p-3"
+   236→                      style={{ animationDelay: `${i * 60}ms` }}
+   237→                    >
+   238→                      <h.icon className="mb-1.5 h-5 w-5 text-emerald-400" />
+   239→                      <div className="text-[13px] font-black uppercase tracking-wide leading-tight text-emerald-100">
+   240→                        {h.title}
+   241→                      </div>
+   242→                      <div className="mt-1 text-[11px] leading-snug text-emerald-200/60">
+   243→                        {h.text}
+   244→                      </div>
+   245→                    </div>
+   246→                  ))}
+   247→                </div>
+   248→                <div className="mt-5 flex flex-col items-center gap-3">
+   249→                  <ArcadeButton onClick={() => act('start')} size="lg">
+   250→                    <Play className="h-5 w-5" /> ИГРАТЬ
+   251→                  </ArcadeButton>
+   252→                  {!isTouch && (
+   253→                    <p className="text-xs text-emerald-200/50">
+   254→                      ← → или A D — движение · Space / ↑ — прыжок · P — пауза ·
+   255→                      прыгай врагам на голову
+   256→                    </p>
+   257→                  )}
+   258→                  {best > 0 && (
+   259→                    <p className="flex items-center gap-1 text-xs font-bold text-amber-300/90">
+   260→                      <Star className="h-3.5 w-3.5 fill-amber-300" /> Рекорд:{' '}
+   261→                      {best}
+   262→                    </p>
+   263→                  )}
+   264→                </div>
+   265→              </Panel>
+   266→            </Overlay>
+   267→          )}
+   268→
+   269→          {phase === 'intro' && snap && (
+   270→            <Overlay>
+   271→              <Panel>
+   272→                {snap.badge && (
+   273→                  <div className="mb-3 flex justify-center">
+   274→                    <span className="ah-stamp inline-block -rotate-2 rounded-md border-[3px] border-amber-400 bg-amber-400/10 px-3 py-1 text-xs font-black uppercase tracking-[0.25em] text-amber-300">
+   275→                      {snap.badge}
+   276→                    </span>
+   277→                  </div>
+   278→                )}
+   279→                <p className="text-xs font-black uppercase tracking-[0.35em] text-emerald-500">
+   280→                  {snap.levelSubtitle}
+   281→                </p>
+   282→                <h2 className="mt-1 text-4xl font-black text-white sm:text-5xl">
+   283→                  {snap.levelName}
+   284→                </h2>
+   285→                <div className="mx-auto mt-4 max-w-xl rounded-lg border-2 border-amber-500/40 bg-amber-500/10 p-4 text-left">
+   286→                  <p className="flex items-start gap-2 text-sm leading-relaxed text-amber-100/90 sm:text-[15px]">
+   287→                    <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+   288→                    <span>{snap.hint}</span>
+   289→                  </p>
+   290→                </div>
+   291→                <div className="mt-5">
+   292→                  <ArcadeButton onClick={() => act('begin')} size="lg">
+   293→                    В БОЙ! <ChevronRight className="h-5 w-5" />
+   294→                  </ArcadeButton>
+   295→                </div>
+   296→              </Panel>
+   297→            </Overlay>
+   298→          )}
+   299→
+   300→          {phase === 'paused' && (
+   301→            <Overlay>
+   302→              <Panel>
+   303→                <h2 className="text-3xl font-black tracking-[0.3em] text-white">
+   304→                  ПАУЗА
+   305→                </h2>
+   306→                <p className="mt-2 text-sm text-emerald-200/70">
+   307→                  Свет подождёт. Но недолго
+   308→                  <span className="ah-blink ml-1 inline-block h-4 w-2 translate-y-0.5 bg-emerald-300" />
+   309→                </p>
+   310→                <div className="mt-6 flex flex-wrap justify-center gap-3">
+   311→                  <ArcadeButton onClick={() => act('pause')}>
+   312→                    <Play className="h-4 w-4" /> Продолжить
+   313→                  </ArcadeButton>
+   314→                  <ArcadeButton tone="ghost" onClick={() => act('menu')}>
+   315→                    <Home className="h-4 w-4" /> В меню
+   316→                  </ArcadeButton>
+   317→                </div>
+   318→              </Panel>
+   319→            </Overlay>
+   320→          )}
+   321→
+   322→          {phase === 'complete' && snap?.result && (
+   323→            <Overlay>
+   324→              <Panel>
+   325→                <div className="flex justify-center">
+   326→                  <span className="ah-stamp inline-block -rotate-2 rounded-md border-[3px] border-emerald-400 px-4 py-1 text-base font-black uppercase tracking-[0.25em] text-emerald-300 sm:text-lg">
+   327→                    Уровень зачищен
+   328→                  </span>
+   329→                </div>
+   330→                <h2 className="mt-3 text-3xl font-black text-white sm:text-4xl">
+   331→                  {snap.result.levelName} спасена!
+   332→                </h2>
+   333→
+   334→                {/* Прогресс забега: 20 точек */}
+   335→                <LevelDots current={snap.levelIndex} />
+   336→
+   337→                <div className="mx-auto mt-4 grid max-w-md grid-cols-2 gap-2 sm:gap-3">
+   338→                  <Tally
+   339→                    icon={Zap}
+   340→                    label="Энергия"
+   341→                    value={`${snap.result.energy}%`}
+   342→                    pct={snap.result.energy / 100}
+   343→                    delay={120}
+   344→                  />
+   345→                  <Tally
+   346→                    icon={Star}
+   347→                    label="Бонус"
+   348→                    value={`+${snap.result.bonus}`}
+   349→                    delay={180}
+   350→                  />
+   351→                  <Tally
+   352→                    icon={Lightbulb}
+   353→                    label="Лампочки"
+   354→                    value={`${snap.result.bulbs}/${snap.result.bulbsTotal}`}
+   355→                    pct={
+   356→                      snap.result.bulbsTotal > 0
+   357→                        ? snap.result.bulbs / snap.result.bulbsTotal
+   358→                        : 1
+   359→                    }
+   360→                    delay={240}
+   361→                  />
+   362→                  <Tally
+   363→                    icon={ToggleLeft}
+   364→                    label="Рубильники"
+   365→                    value={`${snap.result.switches}/${snap.result.switchesTotal}`}
+   366→                    pct={
+   367→                      snap.result.switchesTotal > 0
+   368→                        ? snap.result.switches / snap.result.switchesTotal
+   369→                        : 1
+   370→                    }
+   371→                    delay={300}
+   372→                  />
+   373→                  {snap.result.fusesTotal > 0 && (
+   374→                    <div className="col-span-2">
+   375→                      <Tally
+   376→                        icon={Plug}
+   377→                        label="Предохранители"
+   378→                        value={`${snap.result.fuses}/${snap.result.fusesTotal}`}
+   379→                        pct={
+   380→                          snap.result.fusesTotal > 0
+   381→                            ? snap.result.fuses / snap.result.fusesTotal
+   382→                            : 1
+   383→                        }
+   384→                        delay={340}
+   385→                      />
+   386→                    </div>
+   387→                  )}
+   388→                </div>
+   389→                <p className="mt-4 text-2xl font-black text-amber-300">
+   390→                  <ScoreCount value={snap.result.score} />{' '}
+   391→                  <span className="text-sm tracking-widest text-amber-200/60">
+   392→                    ОЧКОВ
+   393→                  </span>
+   394→                </p>
+   395→                <div className="mt-4 flex flex-wrap justify-center gap-3">
+   396→                  <ArcadeButton onClick={() => act('next')} size="lg">
+   397→                    ДАЛЬШЕ <ChevronRight className="h-5 w-5" />
+   398→                  </ArcadeButton>
+   399→                  <ArcadeButton tone="ghost" onClick={() => act('menu')}>
+   400→                    <Home className="h-4 w-4" /> В меню
+   401→                  </ArcadeButton>
+   402→                </div>
+   403→              </Panel>
+   404→            </Overlay>
+   405→          )}
+   406→
+   407→          {phase === 'gameover' && (
+   408→            <Overlay>
+   409→              <Panel tone="danger">
+   410→                <div className="ah-stripes h-3 w-full rounded-sm bg-[repeating-linear-gradient(45deg,#fb7185_0_14px,#1c0a0e_14px_28px)]" />
+   411→                <Ghost className="mx-auto mt-4 h-14 w-14 text-rose-300" />
+   412→                <h2 className="mt-3 text-3xl font-black tracking-wide text-white sm:text-4xl">
+   413→                  ЭНЕРГИЯ НА НУЛЕ
+   414→                </h2>
+   415→                <p className="mx-auto mt-2 max-w-md text-sm text-rose-100/75">
+   416→                  Вампиры и Гонцы высосали всё электричество. Собирай лампочки,
+   417→                  выключай свет и не наступай на шипы!
+   418→                </p>
+   419→                <div className="mt-6 flex flex-wrap justify-center gap-3">
+   420→                  <ArcadeButton onClick={() => act('retry')}>
+   421→                    <RotateCcw className="h-4 w-4" /> Ещё раз
+   422→                  </ArcadeButton>
+   423→                  <ArcadeButton tone="ghost" onClick={() => act('menu')}>
+   424→                    <Home className="h-4 w-4" /> В меню
+   425→                  </ArcadeButton>
+   426→                </div>
+   427→              </Panel>
+   428→            </Overlay>
+   429→          )}
+   430→
+   431→          {phase === 'victory' && snap?.summary && (
+   432→            <Overlay>
+   433→              <Panel tone="gold">
+   434→                <div className="flex justify-center gap-2">
+   435→                  {[0, 1, 2].map((i) => (
+   436→                    <Star
+   437→                      key={i}
+   438→                      className={`ah-pop h-10 w-10 sm:h-12 sm:w-12 ${
+   439→                        i < snap.summary!.stars
+   440→                          ? 'fill-amber-400 text-amber-400 drop-shadow-[0_0_14px_rgba(251,191,36,0.7)]'
+   441→                          : 'text-emerald-900'
+   442→                      }`}
+   443→                      style={{ animationDelay: `${200 + i * 220}ms` }}
+   444→                    />
+   445→                  ))}
+   446→                </div>
+   447→                <h2 className="mt-3 text-4xl font-black tracking-wide text-amber-300 sm:text-5xl">
+   448→                  ДОМ СПАСЁН!
+   449→                </h2>
+   450→                <p className="mx-auto mt-2 max-w-md text-sm text-amber-100/80">
+   451→                  Все лампы выключены, вампиры разгромлены, предохранители на
+   452→                  месте. Настоящий ЭнергоГерой экономит свет и в жизни!
+   453→                </p>
+   454→                <div className="mx-auto mt-5 grid max-w-md grid-cols-2 gap-2 sm:gap-3">
+   455→                  <Tally
+   456→                    icon={Star}
+   457→                    label="Очки"
+   458→                    value={String(snap.summary.score)}
+   459→                    delay={150}
+   460→                  />
+   461→                  <Tally
+   462→                    icon={Zap}
+   463→                    label="Рекорд"
+   464→                    value={String(snap.summary.best)}
+   465→                    delay={210}
+   466→                  />
+   467→                  <Tally
+   468→                    icon={Lightbulb}
+   469→                    label="Лампочки"
+   470→                    value={`${snap.summary.bulbs}/${snap.summary.bulbsTotal}`}
+   471→                    pct={
+   472→                      snap.summary.bulbsTotal > 0
+   473→                        ? snap.summary.bulbs / snap.summary.bulbsTotal
+   474→                        : 1
+   475→                    }
+   476→                    delay={270}
+   477→                  />
+   478→                  <Tally
+   479→                    icon={ToggleLeft}
+   480→                    label="Рубильники"
+   481→                    value={`${snap.summary.switches}/${snap.summary.switchesTotal}`}
+   482→                    pct={
+   483→                      snap.summary.switchesTotal > 0
+   484→                        ? snap.summary.switches / snap.summary.switchesTotal
+   485→                        : 1
+   486→                    }
+   487→                    delay={330}
+   488→                  />
+   489→                </div>
+   490→                <div className="mt-6 flex flex-wrap justify-center gap-3">
+   491→                  <ArcadeButton onClick={() => act('start')}>
+   492→                    <RotateCcw className="h-4 w-4" /> Играть снова
+   493→                  </ArcadeButton>
+   494→                  <ArcadeButton tone="ghost" onClick={() => act('menu')}>
+   495→                    <Home className="h-4 w-4" /> В меню
+   496→                  </ArcadeButton>
+   497→                </div>
+   498→              </Panel>
+   499→            </Overlay>
+   500→          )}
+   501→
+   502→          {/* Экран «запертого щитка» отрисован прямо на канвасе */}
+   503→        </div>
+   504→
+   505→        {/* ---------- Сенсорное управление ---------- */}
+   506→        {isTouch && (
+   507→          <div className="mt-3 flex w-full select-none items-center justify-between gap-4 px-2">
+   508→            <div className="flex gap-3">
+   509→              <TouchBtn label="←" {...hold('left')} />
+   510→              <TouchBtn label="→" {...hold('right')} />
+   511→            </div>
+   512→            <TouchBtn label="ПРЫЖОК" wide {...hold('jump')} />
+   513→          </div>
+   514→        )}
+   515→      </main>
+   516→
+   517→      <footer className="mt-auto pb-2 text-center text-[11px] text-emerald-200/40 select-none">
+   518→        ЭнергоГерой · 2D-платформер про энергосбережение · берегите энергию IRL
+   519→      </footer>
+   520→    </div>
+   521→  )
+   522→}
+   523→
+   524→function Overlay({ children }: { children: React.ReactNode }) {
+   525→  return (
+   526→    <div className="absolute inset-0 z-10 flex overflow-y-auto bg-[#050a06]/70 p-3 backdrop-blur-[3px]">
+   527→      <div className="m-auto w-full max-w-2xl py-2 text-center">{children}</div>
+   528→    </div>
+   529→  )
+   530→}
+   531→
+   532→/* ------------------------------------------------------------------ */
+   533→/* Кастомные элементы интерфейса (в стиле «энергетического терминала») */
+   534→/* ------------------------------------------------------------------ */
+   535→
+   536→const PANEL_TONES = {
+   537→  green:
+   538→    'border-emerald-700/90 bg-[#07130a]/95 shadow-[0_18px_50px_rgba(0,0,0,0.6)]',
+   539→  danger:
+   540→    'border-rose-800/90 bg-[#160a0c]/95 shadow-[0_18px_50px_rgba(0,0,0,0.6)]',
+   541→  gold: 'border-amber-500/80 bg-[#171004]/95 shadow-[0_18px_50px_rgba(0,0,0,0.6)]',
+   542→} as const
+   543→
+   544→function Panel({
+   545→  children,
+   546→  tone = 'green',
+   547→}: {
+   548→  children: React.ReactNode
+   549→  tone?: keyof typeof PANEL_TONES
+   550→}) {
+   551→  return (
+   552→    <div
+   553→      className={`ah-pop relative rounded-2xl border-[3px] p-1.5 ${PANEL_TONES[tone]}`}
+   554→    >
+   555→      {/* Заклёпки по углам */}
+   556→      <span className="absolute left-2 top-2 h-1.5 w-1.5 rounded-full bg-amber-400/70" />
+   557→      <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-amber-400/70" />
+   558→      <span className="absolute bottom-2 left-2 h-1.5 w-1.5 rounded-full bg-amber-400/70" />
+   559→      <span className="absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full bg-amber-400/70" />
+   560→      <div className="rounded-xl border-2 border-dashed border-white/10 px-4 py-5 sm:px-7 sm:py-6">
+   561→        {children}
+   562→      </div>
+   563→    </div>
+   564→  )
+   565→}
+   566→
+   567→const BTN_TONES = {
+   568→  primary:
+   569→    'border-emerald-950 bg-gradient-to-b from-emerald-400 to-emerald-600 text-emerald-950 shadow-[0_5px_0_#022c22] hover:brightness-110 active:shadow-[0_1px_0_#022c22]',
+   570→  ghost:
+   571→    'border-emerald-800 bg-emerald-950/70 text-emerald-200 shadow-[0_5px_0_rgba(0,0,0,0.55)] hover:bg-emerald-900/80 active:shadow-[0_1px_0_rgba(0,0,0,0.55)]',
+   572→} as const
+   573→
+   574→function ArcadeButton({
+   575→  children,
+   576→  onClick,
+   577→  tone = 'primary',
+   578→  size = 'md',
+   579→}: {
+   580→  children: React.ReactNode
+   581→  onClick: () => void
+   582→  tone?: keyof typeof BTN_TONES
+   583→  size?: 'md' | 'lg'
+   584→}) {
+   585→  return (
+   586→    <button
+   587→      onClick={onClick}
+   588→      className={`group relative inline-flex select-none items-center justify-center gap-2 overflow-hidden rounded-lg border-2 font-black uppercase tracking-wider transition-all duration-75 active:translate-y-[4px] ${
+   589→        BTN_TONES[tone]
+   590→      } ${size === 'lg' ? 'h-12 px-9 text-lg' : 'h-11 px-6 text-sm'}`}
+   591→    >
+   592→      {/* Блик, пробегающий при наведении */}
+   593→      <span className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/3 -translate-x-[160%] skew-x-[-18deg] bg-white/25 transition-transform duration-500 group-hover:translate-x-[420%]" />
+   594→      {children}
+   595→    </button>
+   596→  )
+   597→}
+   598→
+   599→function Tally({
+   600→  icon: Icon,
+   601→  label,
+   602→  value,
+   603→  pct,
+   604→  delay = 0,
+   605→}: {
+   606→  icon: React.ComponentType<{ className?: string }>
+   607→  label: string
+   608→  value: string
+   609→  pct?: number
+   610→  delay?: number
+   611→}) {
+   612→  return (
+   613→    <div
+   614→      className="ah-pop flex items-center gap-2.5 rounded-lg border-2 border-emerald-900/80 bg-black/40 px-3 py-2 text-left"
+   615→      style={{ animationDelay: `${delay}ms` }}
+   616→    >
+   617→      <Icon className="h-5 w-5 shrink-0 text-emerald-400" />
+   618→      <div className="min-w-0 flex-1">
+   619→        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200/60">
+   620→          {label}
+   621→        </div>
+   622→        <div className="truncate text-base font-black text-white">{value}</div>
+   623→        {pct !== undefined && (
+   624→          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-emerald-950">
+   625→            <div
+   626→              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-amber-300 transition-[width] duration-700"
+   627→              style={{ width: `${Math.round(Math.max(0, Math.min(1, pct)) * 100)}%` }}
+   628→            />
+   629→          </div>
+   630→        )}
+   631→      </div>
+   632→    </div>
+   633→  )
+   634→}
+   635→
+   636→function LevelDots({ current }: { current: number }) {
+   637→  return (
+   638→    <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
+   639→      {Array.from({ length: 20 }, (_, i) => (
+   640→        <span
+   641→          key={i}
+   642→          title={`Уровень ${i + 1}`}
+   643→          className={`h-2.5 rounded-full transition-all ${
+   644→            i === current
+   645→              ? 'ah-pop w-6 bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.8)]'
+   646→              : i < current
+   647→                ? 'w-2.5 bg-emerald-500'
+   648→                : 'w-2.5 bg-emerald-950 ring-1 ring-emerald-900'
+   649→          }`}
+   650→        />
+   651→      ))}
+   652→    </div>
+   653→  )
+   654→}
+   655→
+   656→/** Плавный счётчик очков. */
+   657→function ScoreCount({ value }: { value: number }) {
+   658→  const [v, setV] = useState(0)
+   659→  useEffect(() => {
+   660→    let raf = 0
+   661→    const t0 = performance.now()
+   662→    const dur = 700
+   663→    const tick = (t: number) => {
+   664→      const k = Math.min(1, (t - t0) / dur)
+   665→      setV(Math.round(value * (1 - Math.pow(1 - k, 3))))
+   666→      if (k < 1) raf = requestAnimationFrame(tick)
+   667→    }
+   668→    raf = requestAnimationFrame(tick)
+   669→    return () => cancelAnimationFrame(raf)
+   670→  }, [value])
+   671→  return <>{v}</>
+   672→}
+   673→
+   674→function TouchBtn({
+   675→  label,
+   676→  wide,
+   677→  ...handlers
+   678→}: {
+   679→  label: string
+   680→  wide?: boolean
+   681→} & React.ComponentProps<'button'>) {
+   682→  return (
+   683→    <button
+   684→      {...handlers}
+   685→      className={`touch-none select-none rounded-2xl border-2 border-emerald-800/80 bg-emerald-900/50 font-black text-emerald-100 shadow-inner active:bg-emerald-600/60 ${
+   686→        wide ? 'h-16 px-10 text-lg' : 'h-16 w-20 text-2xl'
+   687→      }`}
+   688→    >
+   689→      {label}
+   690→    </button>
+   691→  )
+   692→}
+   693→

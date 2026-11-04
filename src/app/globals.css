@@ -208,3 +208,98 @@
 .ah-shine {
   animation: ah-shine 2.6s ease-in-out infinite;
 }
+
+/* ------------------------------------------------------------------ */
+/* Документный стиль «ЭнергоГероя»: бланки, наряды, штампы, лента      */
+/* ------------------------------------------------------------------ */
+
+/** Фон страницы: графит с чертёжной сеткой. */
+.ah-grid-bg {
+  background-color: #101312;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.032) 1px, transparent 1px);
+  background-size: 34px 34px, 34px 34px;
+}
+
+/** Бланк-документ: тёплая бумага, жёсткая тень, линовка. */
+.ah-doc {
+  position: relative;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(34, 30, 23, 0.035) 0 1px,
+      transparent 1px 28px
+    ),
+    #f4eeda;
+  border: 2px solid #221e17;
+  border-radius: 3px;
+  box-shadow:
+    10px 10px 0 rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  color: #221e17;
+}
+
+/** Красная линия полей, как на канцелярском бланке. */
+.ah-doc::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 30px;
+  width: 1px;
+  background: rgba(200, 64, 46, 0.5);
+  pointer-events: none;
+}
+
+/** Сигнальная лента (жёлто-чёрная). */
+.ah-tape {
+  background: repeating-linear-gradient(
+    -45deg,
+    #ffd23f 0 12px,
+    #221e17 12px 24px
+  );
+}
+
+/** Аварийная лента (красно-чёрная). */
+.ah-tape-red {
+  background: repeating-linear-gradient(
+    -45deg,
+    #d3452f 0 12px,
+    #221e17 12px 24px
+  );
+}
+
+/** Пунктирный «отбивкой до конца строки» для ведомостей. */
+.ah-leader {
+  flex: 1 1 auto;
+  border-bottom: 2px dotted rgba(34, 30, 23, 0.35);
+  margin: 0 8px;
+  transform: translateY(-4px);
+  min-width: 14px;
+}
+
+/** Штриховка «не выбранный пункт / закрытый уровень». */
+.ah-hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(34, 30, 23, 0.14) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+/** Печать «ЗАЧТЕНО». */
+.ah-stamp-ok {
+  color: #2e7d43;
+  border: 3px solid #2e7d43;
+  box-shadow: inset 0 0 0 2px rgba(46, 125, 67, 0.25);
+  mix-blend-mode: multiply;
+}
+
+/** Печать «ОТКАЗ». */
+.ah-stamp-bad {
+  color: #c8402e;
+  border: 3px solid #c8402e;
+  box-shadow: inset 0 0 0 2px rgba(200, 64, 46, 0.25);
+  mix-blend-mode: multiply;
+}

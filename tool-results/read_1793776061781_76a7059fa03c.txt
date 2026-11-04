@@ -1,0 +1,1202 @@
+     1→// Игровой движок «ЭнергоГерой»: физика, сущности, правила, фазы.
+     2→// Рендер вынесен в render.ts.
+     3→
+     4→import { LEVELS } from './levels'
+     5→import { Sfx } from './audio'
+     6→import { render } from './render'
+     7→import type {
+     8→  BulbE,
+     9→  CrumbE,
+    10→  DroneE,
+    11→  ExitE,
+    12→  FuseE,
+    13→  GameCallbacks,
+    14→  HazardE,
+    15→  LampE,
+    16→  MovPlat,
+    17→  Particle,
+    18→  Phantom,
+    19→  Player,
+    20→  Phase,
+    21→  RunnerE,
+    22→  RunSummary,
+    23→  Snapshot,
+    24→  SwitchE,
+    25→  Vampire,
+    26→} from './types'
+    27→
+    28→export const TILE = 40
+    29→export const VIEW_W = 960
+    30→export const VIEW_H = 540
+    31→
+    32→const GRAV = 0.55
+    33→const MOVE_ACC = 0.55
+    34→const MOVE_MAX = 4.2
+    35→const AIR_ACC = 0.38
+    36→const GROUND_FRICTION = 0.8
+    37→const AIR_FRICTION = 0.96
+    38→const JUMP_V = -13.5
+    39→const JUMP_CUT = -5
+    40→const COYOTE = 7
+    41→const BUFFER = 8
+    42→const STEP = 1 / 60
+    43→const EPS = 0.01
+    44→
+    45→const ENERGY_MAX = 100
+    46→const DRAIN_BASE = 1.0 // расход энергии в секунду
+    47→const DRAIN_LAMP = 2.4 // в секунду внутри конуса света
+    48→const LAMP_CONE_LEN = 420
+    49→const DMG_VAMPIRE = 18
+    50→const DMG_PHANTOM = 12
+    51→const DMG_SOCKET = 15
+    52→const DMG_SPIKES = 14
+    53→const DMG_RUNNER = 22
+    54→const DMG_DRONE = 15
+    55→const DMG_FALL = 12
+    56→const HEAL_BULB = 8
+    57→const SCORE_RUNNER = 150
+    58→const SCORE_DRONE = 120
+    59→const SCORE_FUSE = 250
+    60→const CRUMBLE_DELAY = 30 // кадров от вставания до обвала (~0.5 с)
+    61→const CRUMBLE_RESPAWN = 250 // кадров до восстановления плиты
+    62→
+    63→interface InputState {
+    64→  left: boolean
+    65→  right: boolean
+    66→  jump: boolean
+    67→}
+    68→
+    69→interface Box {
+    70→  x: number
+    71→  y: number
+    72→  w: number
+    73→  h: number
+    74→}
+    75→
+    76→export class EnergoGame {
+    77→  private canvas: HTMLCanvasElement
+    78→  private ctx: CanvasRenderingContext2D
+    79→  private cb: GameCallbacks
+    80→  private raf = 0
+    81→  private acc = 0
+    82→  private lastT = 0
+    83→  private destroyed = false
+    84→
+    85→  private kb: InputState = { left: false, right: false, jump: false }
+    86→  private touch: InputState = { left: false, right: false, jump: false }
+    87→  private prevJump = false
+    88→  private startRunBulbs = 0
+    89→  private startRunSwitches = 0
+    90→
+    91→  sfx = new Sfx()
+    92→
+    93→  phase: Phase = 'menu'
+    94→  levelIndex = 0
+    95→  frame = 0
+    96→  shake = 0
+    97→
+    98→  // Мир
+    99→  cols = 0
+   100→  rows = 0
+   101→  worldW = 0
+   102→  worldH = 0
+   103→  grid: Uint8Array = new Uint8Array(0)
+   104→  player: Player = {
+   105→    x: 80,
+   106→    y: 80,
+   107→    w: 26,
+   108→    h: 34,
+   109→    vx: 0,
+   110→    vy: 0,
+   111→    onGround: false,
+   112→    coyote: 0,
+   113→    buffer: 0,
+   114→    facing: 1,
+   115→    invuln: 0,
+   116→    anim: 0,
+   117→    blink: 120,
+   118→    squash: 1,
+   119→    safeX: 80,
+   120→    safeY: 80,
+   121→  }
+   122→  bulbs: BulbE[] = []
+   123→  lamps: LampE[] = []
+   124→  switches: SwitchE[] = []
+   125→  hazards: HazardE[] = []
+   126→  vampires: Vampire[] = []
+   127→  phantoms: Phantom[] = []
+   128→  runners: RunnerE[] = []
+   129→  drones: DroneE[] = []
+   130→  crumbs: CrumbE[] = []
+   131→  fuses: FuseE[] = []
+   132→  plats: MovPlat[] = []
+   133→  exit: ExitE = { x: 0, y: 0, locked: false }
+   134→  particles: Particle[] = []
+   135→  camX = 0
+   136→  camY = 0
+   137→
+   138→  // Состояние забега
+   139→  energy = ENERGY_MAX
+   140→  score = 0
+   141→  private levelStartScore = 0
+   142→  bulbsGot = 0
+   143→  bulbsTotal = 0
+   144→  switchesGot = 0
+   145→  switchesTotal = 0
+   146→  fusesGot = 0
+   147→  fusesTotal = 0
+   148→  runBulbs = 0
+   149→  runSwitches = 0
+   150→  runBulbsTotal = 0
+   151→  runSwitchesTotal = 0
+   152→  result: Snapshot['result'] = null
+   153→  summary: RunSummary | null = null
+   154→
+   155→  constructor(canvas: HTMLCanvasElement, cb: GameCallbacks) {
+   156→    this.canvas = canvas
+   157→    const ctx = canvas.getContext('2d')
+   158→    if (!ctx) throw new Error('Canvas 2D context unavailable')
+   159→    this.ctx = ctx
+   160→    this.cb = cb
+   161→    this.loadLevel(0)
+   162→    window.addEventListener('keydown', this.onKeyDown)
+   163→    window.addEventListener('keyup', this.onKeyUp)
+   164→    window.addEventListener('blur', this.onBlur)
+   165→    this.lastT = performance.now()
+   166→    this.raf = requestAnimationFrame(this.loop)
+   167→  }
+   168→
+   169→  destroy() {
+   170→    this.destroyed = true
+   171→    cancelAnimationFrame(this.raf)
+   172→    window.removeEventListener('keydown', this.onKeyDown)
+   173→    window.removeEventListener('keyup', this.onKeyUp)
+   174→    window.removeEventListener('blur', this.onBlur)
+   175→  }
+   176→
+   177→  // ---------- Публичный API (вызывается из React) ----------
+   178→
+   179→  startRun() {
+   180→    this.sfx.ensure()
+   181→    this.score = 0
+   182→    this.runBulbs = 0
+   183→    this.runSwitches = 0
+   184→    this.summary = null
+   185→    this.result = null
+   186→    this.loadLevel(0)
+   187→    this.setPhase('intro')
+   188→  }
+   189→
+   190→  beginLevel() {
+   191→    this.sfx.ensure()
+   192→    this.setPhase('playing')
+   193→  }
+   194→
+   195→  retryLevel() {
+   196→    this.score = this.levelStartScore
+   197→    this.runBulbs = this.startRunBulbs
+   198→    this.runSwitches = this.startRunSwitches
+   199→    this.loadLevel(this.levelIndex)
+   200→    this.setPhase('playing')
+   201→  }
+   202→
+   203→  nextLevel() {
+   204→    if (this.levelIndex + 1 >= LEVELS.length) {
+   205→      this.finishRun()
+   206→    } else {
+   207→      this.loadLevel(this.levelIndex + 1)
+   208→      this.setPhase('intro')
+   209→    }
+   210→  }
+   211→
+   212→  toMenu() {
+   213→    this.loadLevel(0)
+   214→    this.setPhase('menu')
+   215→  }
+   216→
+   217→  togglePause() {
+   218→    if (this.phase === 'playing') this.setPhase('paused')
+   219→    else if (this.phase === 'paused') this.setPhase('playing')
+   220→  }
+   221→
+   222→  setTouch(k: keyof InputState, v: boolean) {
+   223→    this.touch[k] = v
+   224→    if (k === 'jump' && v) this.sfx.ensure()
+   225→  }
+   226→
+   227→  getSnapshot(): Snapshot {
+   228→    const def = LEVELS[this.levelIndex]
+   229→    return {
+   230→      phase: this.phase,
+   231→      levelIndex: this.levelIndex,
+   232→      levelName: def.name,
+   233→      levelSubtitle: def.subtitle,
+   234→      hint: def.hint,
+   235→      badge: def.badge ?? null,
+   236→      score: this.score,
+   237→      energy: this.energy,
+   238→      result: this.result,
+   239→      summary: this.summary,
+   240→    }
+   241→  }
+   242→
+   243→  // ---------- Фазы ----------
+   244→
+   245→  private setPhase(p: Phase) {
+   246→    this.phase = p
+   247→    this.cb.onPhase(this.getSnapshot())
+   248→  }
+   249→
+   250→  private finishRun() {
+   251→    const total = this.runBulbsTotal + this.runSwitchesTotal
+   252→    const collectPct = total > 0 ? (this.runBulbs + this.runSwitches) / total : 1
+   253→    const stars = collectPct >= 0.9 ? 3 : collectPct >= 0.55 ? 2 : 1
+   254→    let best = 0
+   255→    try {
+   256→      best = Number(localStorage.getItem('energohero-best') ?? '0') || 0
+   257→      if (this.score > best) {
+   258→        best = this.score
+   259→        localStorage.setItem('energohero-best', String(best))
+   260→      }
+   261→    } catch {
+   262→      /* localStorage недоступен */
+   263→    }
+   264→    this.summary = {
+   265→      score: this.score,
+   266→      best,
+   267→      bulbs: this.runBulbs,
+   268→      bulbsTotal: this.runBulbsTotal,
+   269→      switches: this.runSwitches,
+   270→      switchesTotal: this.runSwitchesTotal,
+   271→      stars,
+   272→    }
+   273→    this.setPhase('victory')
+   274→  }
+   275→
+   276→  // ---------- Загрузка уровня ----------
+   277→
+   278→  loadLevel(index: number) {
+   279→    const def = LEVELS[index]
+   280→    this.levelIndex = index
+   281→    this.levelStartScore = this.score
+   282→    this.startRunBulbs = this.runBulbs
+   283→    this.startRunSwitches = this.runSwitches
+   284→
+   285→    const raw = def.map
+   286→    this.rows = raw.length
+   287→    this.cols = raw.reduce((m, r) => Math.max(m, r.length), 0)
+   288→    this.grid = new Uint8Array(this.cols * this.rows)
+   289→    this.bulbs = []
+   290→    this.lamps = []
+   291→    this.switches = []
+   292→    this.hazards = []
+   293→    this.vampires = []
+   294→    this.phantoms = []
+   295→    this.runners = []
+   296→    this.drones = []
+   297→    this.crumbs = []
+   298→    this.fuses = []
+   299→    this.plats = []
+   300→    this.particles = []
+   301→    this.exit = { x: 0, y: 0, locked: false }
+   302→
+   303→    let px = 80
+   304→    let py = 80
+   305→
+   306→    for (let r = 0; r < this.rows; r++) {
+   307→      const row = raw[r]
+   308→      for (let c = 0; c < this.cols; c++) {
+   309→        const ch = c < row.length ? row[c] : '.'
+   310→        const x = c * TILE
+   311→        const y = r * TILE
+   312→        switch (ch) {
+   313→          case '#':
+   314→            this.grid[r * this.cols + c] = 1
+   315→            break
+   316→          case 'P':
+   317→            px = x + TILE / 2 - 13
+   318→            py = y + TILE - 34
+   319→            break
+   320→          case 'B':
+   321→            this.bulbs.push({
+   322→              x: x + TILE / 2,
+   323→              y: y + TILE / 2,
+   324→              taken: false,
+   325→              phase: (c + r) * 0.7,
+   326→            })
+   327→            break
+   328→          case 'L':
+   329→            this.lamps.push({ x: x + TILE / 2, y: y + 22, group: 0, on: true })
+   330→            break
+   331→          case 'M':
+   332→            this.lamps.push({ x: x + TILE / 2, y: y + 22, group: 1, on: true })
+   333→            break
+   334→          case 'S':
+   335→            this.switches.push({
+   336→              x: x + TILE / 2,
+   337→              y: y + TILE,
+   338→              group: 0,
+   339→              flipped: false,
+   340→            })
+   341→            break
+   342→          case 'T':
+   343→            this.switches.push({
+   344→              x: x + TILE / 2,
+   345→              y: y + TILE,
+   346→              group: 1,
+   347→              flipped: false,
+   348→            })
+   349→            break
+   350→          case 'V': {
+   351→            // Скорость вампиров растёт с номером уровня
+   352→            const vSpeed = Math.min(1.9, 1.15 + this.levelIndex * 0.035)
+   353→            this.vampires.push({
+   354→              x: x + 5,
+   355→              y: y + TILE - 38,
+   356→              w: 30,
+   357→              h: 38,
+   358→              vx: vSpeed,
+   359→              vy: 0,
+   360→              minX: x + TILE / 2 - 220,
+   361→              maxX: x + TILE / 2 + 220,
+   362→              dead: false,
+   363→              anim: (c % 7) * 0.3,
+   364→              onGround: false,
+   365→            })
+   366→            break
+   367→          }
+   368→          case 'G':
+   369→            this.runners.push({
+   370→              x: x + 5,
+   371→              y: y + TILE - 38,
+   372→              w: 30,
+   373→              h: 38,
+   374→              vx: Math.min(3.4, 2.45 + this.levelIndex * 0.03),
+   375→              vy: 0,
+   376→              minX: x + TILE / 2 - 280,
+   377→              maxX: x + TILE / 2 + 280,
+   378→              dead: false,
+   379→              anim: (c % 7) * 0.3,
+   380→              onGround: false,
+   381→            })
+   382→            break
+   383→          case 'Z':
+   384→            this.drones.push({
+   385→              x: x + 4,
+   386→              y: y + 6,
+   387→              w: 32,
+   388→              h: 26,
+   389→              vx: 1.7 + (c % 3) * 0.25,
+   390→              vy: 1.15,
+   391→              dead: false,
+   392→              anim: (c % 5) * 0.4,
+   393→              onGround: false,
+   394→            })
+   395→            break
+   396→          case 'F': {
+   397→            const fSpeed =
+   398→              0.019 + (c % 5) * 0.0015 + Math.min(0.009, this.levelIndex * 0.0005)
+   399→            this.phantoms.push({
+   400→              cx: x + TILE / 2,
+   401→              cy: y + TILE / 2,
+   402→              x: x + TILE / 2,
+   403→              y: y + TILE / 2,
+   404→              amp: 150,
+   405→              speed: fSpeed,
+   406→              phase: (c % 11) * 0.55,
+   407→              dead: false,
+   408→            })
+   409→            break
+   410→          }
+   411→          case 'X':
+   412→            this.hazards.push({ x: x + TILE / 2, y: y + TILE, kind: 'socket' })
+   413→            break
+   414→          case '^':
+   415→            this.hazards.push({ x: x + TILE / 2, y: y + TILE, kind: 'spikes' })
+   416→            break
+   417→          case 'C':
+   418→            this.crumbs.push({
+   419→              x,
+   420→              y,
+   421→              w: TILE,
+   422→              h: 14,
+   423→              state: 0,
+   424→              timer: 0,
+   425→            })
+   426→            break
+   427→          case 'K':
+   428→            this.fuses.push({
+   429→              x: x + TILE / 2,
+   430→              y: y + TILE / 2,
+   431→              taken: false,
+   432→              phase: (c + r) * 0.6,
+   433→            })
+   434→            break
+   435→          case 'W':
+   436→            this.plats.push({
+   437→              x: x - 20,
+   438→              y: y + 8,
+   439→              w: 120,
+   440→              h: 16,
+   441→              cx: x - 20,
+   442→              by: y + 8,
+   443→              amp: 85,
+   444→              speed: 0.021,
+   445→              phase: (c % 3) * 0.9,
+   446→              dx: 0,
+   447→              dy: 0,
+   448→              axis: 'x',
+   449→            })
+   450→            break
+   451→          case 'U':
+   452→            this.plats.push({
+   453→              x: x - 20,
+   454→              y: y + 8,
+   455→              w: 120,
+   456→              h: 16,
+   457→              cx: x - 20,
+   458→              by: y + 8,
+   459→              amp: 72,
+   460→              speed: 0.026,
+   461→              phase: (c % 4) * 1.15,
+   462→              dx: 0,
+   463→              dy: 0,
+   464→              axis: 'y',
+   465→            })
+   466→            break
+   467→          case 'E':
+   468→            this.exit = { x: x + 2, y: y + TILE, locked: false }
+   469→            break
+   470→        }
+   471→      }
+   472→    }
+   473→
+   474→    this.worldW = this.cols * TILE
+   475→    this.worldH = this.rows * TILE
+   476→    this.bulbsGot = 0
+   477→    this.switchesGot = 0
+   478→    this.fusesGot = 0
+   479→    this.bulbsTotal = this.bulbs.length
+   480→    this.switchesTotal = this.switches.length
+   481→    this.fusesTotal = this.fuses.length
+   482→    // Если на уровне есть предохранители — выход заперт, пока не собраны
+   483→    this.exit.locked = this.fusesTotal > 0
+   484→    this.runBulbsTotal = LEVELS.reduce(
+   485→      (s, l) => s + countChar(l.map, 'B'),
+   486→      0,
+   487→    )
+   488→    this.runSwitchesTotal = LEVELS.reduce(
+   489→      (s, l) => s + countChar(l.map, 'S') + countChar(l.map, 'T'),
+   490→      0,
+   491→    )
+   492→
+   493→    this.player = {
+   494→      x: px,
+   495→      y: py,
+   496→      w: 26,
+   497→      h: 34,
+   498→      vx: 0,
+   499→      vy: 0,
+   500→      onGround: false,
+   501→      coyote: 0,
+   502→      buffer: 0,
+   503→      facing: 1,
+   504→      invuln: 0,
+   505→      anim: 0,
+   506→      blink: 120,
+   507→      squash: 1,
+   508→      safeX: px,
+   509→      safeY: py,
+   510→    }
+   511→    this.energy = ENERGY_MAX
+   512→    this.camX = 0
+   513→    this.camY = 0
+   514→    this.shake = 0
+   515→    this.frame = 0
+   516→    this.prevJump = false
+   517→  }
+   518→
+   519→  // ---------- Ввод ----------
+   520→
+   521→  private readonly GAME_KEYS = new Set([
+   522→    'ArrowLeft',
+   523→    'ArrowRight',
+   524→    'ArrowUp',
+   525→    'ArrowDown',
+   526→    'Space',
+   527→    'KeyA',
+   528→    'KeyD',
+   529→    'KeyW',
+   530→    'KeyZ',
+   531→  ])
+   532→
+   533→  private onKeyDown = (e: KeyboardEvent) => {
+   534→    const c = this.keyId(e)
+   535→    if (this.GAME_KEYS.has(c)) e.preventDefault()
+   536→    switch (c) {
+   537→      case 'ArrowLeft':
+   538→      case 'KeyA':
+   539→        this.kb.left = true
+   540→        break
+   541→      case 'ArrowRight':
+   542→      case 'KeyD':
+   543→        this.kb.right = true
+   544→        break
+   545→      case 'Space':
+   546→      case 'ArrowUp':
+   547→      case 'KeyW':
+   548→      case 'KeyZ':
+   549→        this.kb.jump = true
+   550→        this.sfx.ensure()
+   551→        break
+   552→      case 'Escape':
+   553→      case 'KeyP':
+   554→        if (this.phase === 'playing' || this.phase === 'paused')
+   555→          this.togglePause()
+   556→        break
+   557→    }
+   558→  }
+   559→
+   560→  private onKeyUp = (e: KeyboardEvent) => {
+   561→    switch (this.keyId(e)) {
+   562→      case 'ArrowLeft':
+   563→      case 'KeyA':
+   564→        this.kb.left = false
+   565→        break
+   566→      case 'ArrowRight':
+   567→      case 'KeyD':
+   568→        this.kb.right = false
+   569→        break
+   570→      case 'Space':
+   571→      case 'ArrowUp':
+   572→      case 'KeyW':
+   573→      case 'KeyZ':
+   574→        this.kb.jump = false
+   575→        break
+   576→    }
+   577→  }
+   578→
+   579→  // Нормализация: некоторые окружения присылают события без e.code —
+   580→  // тогда откатываемся к e.key ('ArrowLeft', 'a', ' ', 'Enter').
+   581→  private keyId(e: KeyboardEvent): string {
+   582→    if (e.code) return e.code
+   583→    const k = e.key
+   584→    if (k === ' ') return 'Space'
+   585→    return k.length === 1 ? `Key${k.toUpperCase()}` : k
+   586→  }
+   587→
+   588→  private onBlur = () => {
+   589→    this.kb.left = this.kb.right = this.kb.jump = false
+   590→    this.touch.left = this.touch.right = this.touch.jump = false
+   591→    if (this.phase === 'playing') this.setPhase('paused')
+   592→  }
+   593→
+   594→  private get input() {
+   595→    return {
+   596→      left: this.kb.left || this.touch.left,
+   597→      right: this.kb.right || this.touch.right,
+   598→      jump: this.kb.jump || this.touch.jump,
+   599→    }
+   600→  }
+   601→
+   602→  // ---------- Главный цикл ----------
+   603→
+   604→  private loop = (t: number) => {
+   605→    if (this.destroyed) return
+   606→    this.raf = requestAnimationFrame(this.loop)
+   607→    let dt = (t - this.lastT) / 1000
+   608→    this.lastT = t
+   609→    if (dt > 0.1) dt = 0.1
+   610→    if (this.phase === 'playing') {
+   611→      this.acc += dt
+   612→      let steps = 0
+   613→      while (this.acc >= STEP && steps < 4) {
+   614→        this.step()
+   615→        this.acc -= STEP
+   616→        steps++
+   617→      }
+   618→      if (steps === 4) this.acc = 0
+   619→    }
+   620→    render(this.ctx, this)
+   621→  }
+   622→
+   623→  // ---------- Шаг симуляции ----------
+   624→
+   625→  private step() {
+   626→    const p = this.player
+   627→    const inp = this.input
+   628→    this.frame++
+   629→    if (this.shake > 0) this.shake *= 0.85
+   630→
+   631→    // Прыжок: буфер + койот-время
+   632→    const jumpPressed = inp.jump && !this.prevJump
+   633→    this.prevJump = inp.jump
+   634→    if (jumpPressed) p.buffer = BUFFER
+   635→    if (p.buffer > 0) p.buffer--
+   636→    if (p.coyote > 0) p.coyote--
+   637→
+   638→    // Горизонталь
+   639→    const acc = p.onGround ? MOVE_ACC : AIR_ACC
+   640→    if (inp.left && !inp.right) {
+   641→      p.vx -= acc
+   642→      p.facing = -1
+   643→    } else if (inp.right && !inp.left) {
+   644→      p.vx += acc
+   645→      p.facing = 1
+   646→    } else {
+   647→      p.vx *= p.onGround ? GROUND_FRICTION : AIR_FRICTION
+   648→      if (Math.abs(p.vx) < 0.05) p.vx = 0
+   649→    }
+   650→    p.vx = Math.max(-MOVE_MAX, Math.min(MOVE_MAX, p.vx))
+   651→
+   652→    // Прыжок
+   653→    if (p.buffer > 0 && (p.onGround || p.coyote > 0)) {
+   654→      p.vy = JUMP_V
+   655→      p.onGround = false
+   656→      p.coyote = 0
+   657→      p.buffer = 0
+   658→      p.squash = 1.18
+   659→      this.sfx.jump()
+   660→      this.spawnParticles(p.x + p.w / 2, p.y + p.h, 4, 'dust')
+   661→    }
+   662→    if (!inp.jump && p.vy < JUMP_CUT) p.vy = JUMP_CUT
+   663→
+   664→    // Гравитация
+   665→    p.vy = Math.min(p.vy + GRAV, 14)
+   666→
+   667→    // Движущиеся платформы (горизонтальные и вертикальные)
+   668→    for (const pl of this.plats) {
+   669→      pl.phase += pl.speed
+   670→      if (pl.axis === 'x') {
+   671→        const nx = pl.cx + Math.sin(pl.phase) * pl.amp
+   672→        pl.dx = nx - pl.x
+   673→        pl.dy = 0
+   674→        pl.x = nx
+   675→      } else {
+   676→        const ny = pl.by + Math.sin(pl.phase) * pl.amp
+   677→        pl.dy = ny - pl.y
+   678→        pl.dx = 0
+   679→        pl.y = ny
+   680→      }
+   681→    }
+   682→
+   683→    // Движение и коллизии
+   684→    this.moveX(p, p.vx)
+   685→    p.x = Math.max(2, Math.min(this.worldW - p.w - 2, p.x))
+   686→
+   687→    const wasOnGround = p.onGround
+   688→    const prevFeet = p.y + p.h
+   689→    this.moveY(p, p.vy, prevFeet)
+   690→
+   691→    if (p.onGround) {
+   692→      if (!wasOnGround) {
+   693→        p.squash = 0.78
+   694→        this.spawnParticles(p.x + p.w / 2, p.y + p.h, 5, 'dust')
+   695→        this.sfx.land()
+   696→      }
+   697→      p.coyote = COYOTE
+   698→      const underL = this.solidAt(p.x + 4, p.y + p.h + 3)
+   699→      const underR = this.solidAt(p.x + p.w - 4, p.y + p.h + 3)
+   700→      if (underL && underR) {
+   701→        p.safeX = p.x
+   702→        p.safeY = p.y
+   703→      }
+   704→    }
+   705→    p.squash += (1 - p.squash) * 0.18
+   706→    p.anim += Math.abs(p.vx) * 0.09
+   707→    if (p.invuln > 0) p.invuln--
+   708→    if (p.blink > 0) p.blink--
+   709→    else if (Math.random() < 0.012) p.blink = 8
+   710→
+   711→    // Провал за нижнюю границу мира (люки)
+   712→    if (p.y > this.worldH + 60) {
+   713→      this.damage(DMG_FALL, 0)
+   714→      p.x = p.safeX
+   715→      p.y = p.safeY
+   716→      p.vx = 0
+   717→      p.vy = 0
+   718→    }
+   719→
+   720→    this.updateWalkers(this.vampires, DMG_VAMPIRE, 100)
+   721→    this.updateWalkers(this.runners, DMG_RUNNER, SCORE_RUNNER)
+   722→    this.updateDrones()
+   723→    this.updateCrumbs()
+   724→    this.updateFuses()
+   725→    this.updatePickups()
+   726→    this.updateSwitches()
+   727→    this.updateHazards()
+   728→    this.updateExit()
+   729→    this.updateEnergy()
+   730→    this.updateParticles()
+   731→    this.updateCamera()
+   732→  }
+   733→
+   734→  // ---------- Коллизии с тайлами ----------
+   735→
+   736→  solidAt(px: number, py: number): boolean {
+   737→    const c = Math.floor(px / TILE)
+   738→    const r = Math.floor(py / TILE)
+   739→    if (c < 0 || c >= this.cols || r < 0 || r >= this.rows) return false
+   740→    return this.grid[r * this.cols + c] === 1
+   741→  }
+   742→
+   743→  private rectHitsSolid(x: number, y: number, w: number, h: number): boolean {
+   744→    const c0 = Math.floor(x / TILE)
+   745→    const c1 = Math.floor((x + w - EPS) / TILE)
+   746→    const r0 = Math.floor(y / TILE)
+   747→    const r1 = Math.floor((y + h - EPS) / TILE)
+   748→    for (let r = r0; r <= r1; r++) {
+   749→      for (let c = c0; c <= c1; c++) {
+   750→        if (c < 0 || c >= this.cols || r < 0 || r >= this.rows) continue
+   751→        if (this.grid[r * this.cols + c] === 1) return true
+   752→      }
+   753→    }
+   754→    return false
+   755→  }
+   756→
+   757→  private moveX(e: Box & { vx: number }, dx: number): boolean {
+   758→    e.x += dx
+   759→    if (!this.rectHitsSolid(e.x, e.y, e.w, e.h)) return false
+   760→    if (dx > 0) {
+   761→      e.x = Math.floor((e.x + e.w) / TILE) * TILE - e.w - EPS
+   762→    } else if (dx < 0) {
+   763→      e.x = Math.floor(e.x / TILE) * TILE + TILE + EPS
+   764→    }
+   765→    e.vx = 0
+   766→    return true
+   767→  }
+   768→
+   769→  private moveY(
+   770→    e: Box & { vy: number; onGround: boolean },
+   771→    dy: number,
+   772→    prevFeet: number,
+   773→  ): void {
+   774→    e.y += dy
+   775→    if (dy >= 0) {
+   776→      if (this.rectHitsSolid(e.x, e.y, e.w, e.h)) {
+   777→        e.y = Math.floor((e.y + e.h) / TILE) * TILE - e.h - EPS
+   778→        e.vy = 0
+   779→        e.onGround = true
+   780→      }
+   781→      for (const pl of this.plats) {
+   782→        const feet = e.y + e.h
+   783→        if (
+   784→          e.vy >= 0 &&
+   785→          feet >= pl.y &&
+   786→          prevFeet <= pl.y + 6 &&
+   787→          e.x + e.w > pl.x &&
+   788→          e.x < pl.x + pl.w
+   789→        ) {
+   790→          e.y = pl.y - e.h
+   791→          e.vy = 0
+   792→          e.onGround = true
+   793→          e.x += pl.dx
+   794→        }
+   795→      }
+   796→      // Осыпающиеся плиты: та же «односторонняя» коллизия сверху
+   797→      for (const c of this.crumbs) {
+   798→        if (c.state === 2) continue
+   799→        const feet = e.y + e.h
+   800→        if (
+   801→          feet >= c.y &&
+   802→          prevFeet <= c.y + 6 &&
+   803→          e.x + e.w > c.x + 2 &&
+   804→          e.x < c.x + c.w - 2
+   805→        ) {
+   806→          e.y = c.y - e.h
+   807→          e.vy = 0
+   808→          e.onGround = true
+   809→        }
+   810→      }
+   811→    } else {
+   812→      if (this.rectHitsSolid(e.x, e.y, e.w, e.h)) {
+   813→        e.y = Math.floor(e.y / TILE) * TILE + TILE + EPS
+   814→        e.vy = 0
+   815→      }
+   816→    }
+   817→  }
+   818→
+   819→  // ---------- Сущности ----------
+   820→
+   821→  /** Наземные ходячие враги (вампиры и гонцы). */
+   822→  private updateWalkers(list: Vampire[], dmg: number, stompScore: number) {
+   823→    const p = this.player
+   824→    for (const v of list) {
+   825→      if (v.dead) continue
+   826→      v.anim += Math.abs(v.vx) * 0.06
+   827→      v.vy = Math.min(v.vy + GRAV, 12)
+   828→      const oldVx = v.vx
+   829→      this.moveX(v, v.vx)
+   830→      if (v.vx === 0 && oldVx !== 0) v.vx = -oldVx // упёрся в стену
+   831→      if (v.x <= v.minX) v.vx = Math.abs(v.vx)
+   832→      if (v.x >= v.maxX) v.vx = -Math.abs(v.vx)
+   833→
+   834→      const prevFeet = v.y + v.h
+   835→      const wasGround = v.onGround
+   836→      v.onGround = false
+   837→      this.moveY(v, v.vy, prevFeet)
+   838→      if (v.onGround && !wasGround) v.vy = 0
+   839→      // разворот у обрыва
+   840→      if (v.onGround) {
+   841→        const aheadX = v.vx > 0 ? v.x + v.w + 5 : v.x - 5
+   842→        if (!this.solidAt(aheadX, v.y + v.h + 8)) v.vx = -v.vx
+   843→      }
+   844→
+   845→      if (p.invuln <= 0 && rectsOverlap(p, v)) {
+   846→        if (p.vy > 2 && p.y + p.h - v.y < 22) {
+   847→          v.dead = true
+   848→          p.vy = -9.5
+   849→          this.score += stompScore
+   850→          this.shake = 6
+   851→          this.spawnParticles(v.x + v.w / 2, v.y + v.h / 2, 14, 'poof')
+   852→          this.sfx.stomp()
+   853→        } else {
+   854→          this.damage(dmg, p.x < v.x + v.w / 2 ? -1 : 1)
+   855→        }
+   856→      }
+   857→    }
+   858→  }
+   859→
+   860→  /** Дроны-пылесосы: летают по диагонали, отскакивая от стен. */
+   861→  private updateDrones() {
+   862→    const p = this.player
+   863→    for (const d of this.drones) {
+   864→      if (d.dead) continue
+   865→      d.anim += 0.12
+   866→      const oldVx = d.vx
+   867→      this.moveX(d, d.vx)
+   868→      if (d.vx === 0 && oldVx !== 0) d.vx = -oldVx
+   869→
+   870→      const oldVy = d.vy
+   871→      this.moveY(d, d.vy, d.y + d.h)
+   872→      if (d.vy === 0 && oldVy !== 0) d.vy = -oldVy // пол или потолок
+   873→
+   874→      // Границы мира: не даём дрону улететь в пустоту
+   875→      if (d.x <= 0) {
+   876→        d.x = 0
+   877→        d.vx = Math.abs(d.vx)
+   878→      } else if (d.x + d.w >= this.worldW) {
+   879→        d.x = this.worldW - d.w
+   880→        d.vx = -Math.abs(d.vx)
+   881→      }
+   882→      if (d.y <= 0) {
+   883→        d.y = 0
+   884→        d.vy = Math.abs(d.vy)
+   885→      } else if (d.y + d.h >= this.worldH) {
+   886→        d.y = this.worldH - d.h
+   887→        d.vy = -Math.abs(d.vy)
+   888→      }
+   889→
+   890→      if (p.invuln <= 0 && rectsOverlap(p, d)) {
+   891→        if (p.vy > 2 && p.y + p.h - d.y < 20) {
+   892→          d.dead = true
+   893→          p.vy = -9.5
+   894→          this.score += SCORE_DRONE
+   895→          this.shake = 6
+   896→          this.spawnParticles(d.x + d.w / 2, d.y + d.h / 2, 12, 'poof')
+   897→          this.sfx.stomp()
+   898→        } else {
+   899→          this.damage(DMG_DRONE, p.x < d.x + d.w / 2 ? -1 : 1)
+   900→        }
+   901→      }
+   902→    }
+   903→  }
+   904→
+   905→  /** Осыпающиеся плиты: разрушаются под игроком и восстанавливаются. */
+   906→  private updateCrumbs() {
+   907→    const p = this.player
+   908→    for (const c of this.crumbs) {
+   909→      if (c.state === 2) {
+   910→        c.timer--
+   911→        if (c.timer <= 0) {
+   912→          c.state = 0
+   913→          c.timer = 0
+   914→        }
+   915→        continue
+   916→      }
+   917→      const standing =
+   918→        p.vy >= 0 &&
+   919→        p.x + p.w > c.x + 3 &&
+   920→        p.x < c.x + c.w - 3 &&
+   921→        Math.abs(p.y + p.h - c.y) < 4
+   922→      if (c.state === 0 && standing) {
+   923→        c.state = 1
+   924→        c.timer = CRUMBLE_DELAY
+   925→      } else if (c.state === 1) {
+   926→        c.timer--
+   927→        if (c.timer <= 0) {
+   928→          c.state = 2
+   929→          c.timer = CRUMBLE_RESPAWN
+   930→          this.spawnParticles(c.x + c.w / 2, c.y + 6, 11, 'dust')
+   931→          this.sfx.crumble()
+   932→        }
+   933→      }
+   934→    }
+   935→  }
+   936→
+   937→  /** Предохранители: снимают замок с выхода. */
+   938→  private updateFuses() {
+   939→    const p = this.player
+   940→    for (const fu of this.fuses) {
+   941→      if (fu.taken) continue
+   942→      const bobY = fu.y + Math.sin(this.frame * 0.05 + fu.phase) * 4
+   943→      if (circleRect(fu.x, bobY, 16, p)) {
+   944→        fu.taken = true
+   945→        this.fusesGot++
+   946→        this.score += SCORE_FUSE
+   947→        this.exit.locked = this.fusesGot < this.fusesTotal
+   948→        this.shake = 3
+   949→        this.spawnParticles(fu.x, bobY, 14, 'spark')
+   950→        this.sfx.unlock()
+   951→      }
+   952→    }
+   953→  }
+   954→
+   955→  private updatePhantoms() {
+   956→    const p = this.player
+   957→    for (const f of this.phantoms) {
+   958→      if (f.dead) continue
+   959→      f.phase += f.speed
+   960→      f.x = f.cx + Math.sin(f.phase) * f.amp
+   961→      f.y = f.cy + Math.sin(f.phase * 2.3) * 26
+   962→      if (p.invuln <= 0 && circleRect(f.x, f.y, 16, p)) {
+   963→        this.damage(DMG_PHANTOM, p.x < f.x ? -1 : 1)
+   964→        f.phase += Math.PI
+   965→      }
+   966→    }
+   967→  }
+   968→
+   969→  private updatePickups() {
+   970→    const p = this.player
+   971→    for (const b of this.bulbs) {
+   972→      if (b.taken) continue
+   973→      const bobY = b.y + Math.sin(this.frame * 0.05 + b.phase) * 4
+   974→      if (circleRect(b.x, bobY, 15, p)) {
+   975→        b.taken = true
+   976→        this.bulbsGot++
+   977→        this.runBulbs++
+   978→        this.score += 50
+   979→        this.energy = Math.min(ENERGY_MAX, this.energy + HEAL_BULB)
+   980→        this.spawnParticles(b.x, bobY, 8, 'star')
+   981→        this.sfx.collect()
+   982→      }
+   983→    }
+   984→  }
+   985→
+   986→  private updateSwitches() {
+   987→    for (const s of this.switches) {
+   988→      if (s.flipped) continue
+   989→      const box = { x: s.x - 15, y: s.y - 38, w: 30, h: 38 }
+   990→      if (rectsOverlap(this.player, box)) {
+   991→        s.flipped = true
+   992→        let turned = 0
+   993→        for (const l of this.lamps) {
+   994→          if (l.group === s.group && l.on) {
+   995→            l.on = false
+   996→            turned++
+   997→          }
+   998→        }
+   999→        if (turned > 0) {
+  1000→          this.score += 150
+  1001→          this.switchesGot++
+  1002→          this.runSwitches++
+  1003→          for (const l of this.lamps) {
+  1004→            if (l.group === s.group)
+  1005→              this.spawnParticles(l.x, l.y + 10, 7, 'spark')
+  1006→          }
+  1007→          this.spawnParticles(s.x, s.y - 20, 8, 'star')
+  1008→          this.sfx.flip()
+  1009→        }
+  1010→      }
+  1011→    }
+  1012→  }
+  1013→
+  1014→  private lampDrain(): number {
+  1015→    let drain = 0
+  1016→    const p = this.player
+  1017→    const pcx = p.x + p.w / 2
+  1018→    const pcy = p.y + p.h / 2
+  1019→    for (const l of this.lamps) {
+  1020→      if (!l.on) continue
+  1021→      const dx = Math.abs(pcx - l.x)
+  1022→      const dy = pcy - l.y
+  1023→      if (dy > 0 && dy < LAMP_CONE_LEN) {
+  1024→        const halfW = 16 + dy * 0.34
+  1025→        if (dx < halfW) {
+  1026→          drain += DRAIN_LAMP * (1 - (dy / LAMP_CONE_LEN) * 0.45)
+  1027→        }
+  1028→      }
+  1029→    }
+  1030→    return Math.min(drain, DRAIN_LAMP * 2)
+  1031→  }
+  1032→
+  1033→  private updateHazards() {
+  1034→    const p = this.player
+  1035→    if (p.invuln > 0) return
+  1036→    for (const h of this.hazards) {
+  1037→      if (h.kind === 'spikes') {
+  1038→        const box = { x: h.x - 16, y: h.y - 20, w: 32, h: 20 }
+  1039→        if (rectsOverlap(p, box)) {
+  1040→          this.damage(DMG_SPIKES, p.x < h.x ? -1 : 1)
+  1041→          this.spawnParticles(h.x, h.y - 10, 8, 'spark')
+  1042→          break
+  1043→        }
+  1044→      } else if (circleRect(h.x, h.y - 14, 15, p)) {
+  1045→        this.damage(DMG_SOCKET, p.x < h.x ? -1 : 1)
+  1046→        this.spawnParticles(h.x, h.y - 16, 12, 'spark')
+  1047→        break
+  1048→      }
+  1049→    }
+  1050→  }
+  1051→
+  1052→  private updateExit() {
+  1053→    const p = this.player
+  1054→    const box = { x: this.exit.x, y: this.exit.y - 56, w: 36, h: 56 }
+  1055→    if (!rectsOverlap(p, box)) return
+  1056→    // Заперт: нужен предохранитель
+  1057→    if (this.exit.locked) {
+  1058→      if (this.frame % 55 === 0) {
+  1059→        this.sfx.deny()
+  1060→        this.spawnParticles(this.exit.x + 18, this.exit.y - 40, 4, 'spark')
+  1061→      }
+  1062→      return
+  1063→    }
+  1064→    const bonus = Math.round(this.energy) * 5
+  1065→    this.score += bonus
+  1066→    this.result = {
+  1067→      levelName: LEVELS[this.levelIndex].name,
+  1068→      energy: Math.round(this.energy),
+  1069→      bonus,
+  1070→      bulbs: this.bulbsGot,
+  1071→      bulbsTotal: this.bulbsTotal,
+  1072→      switches: this.switchesGot,
+  1073→      switchesTotal: this.switchesTotal,
+  1074→      fuses: this.fusesGot,
+  1075→      fusesTotal: this.fusesTotal,
+  1076→      score: this.score,
+  1077→    }
+  1078→    this.shake = 4
+  1079→    this.spawnParticles(p.x + p.w / 2, p.y, 16, 'star')
+  1080→    this.sfx.win()
+  1081→    if (this.levelIndex + 1 >= LEVELS.length) {
+  1082→      this.finishRun()
+  1083→    } else {
+  1084→      this.setPhase('complete')
+  1085→    }
+  1086→  }
+  1087→
+  1088→  private updateEnergy() {
+  1089→    // Сложность растёт с номером уровня: энергия тает всё быстрее
+  1090→    const mul = 1 + this.levelIndex * 0.05
+  1091→    this.energy -=
+  1092→      (DRAIN_BASE * mul + this.lampDrain() * (0.8 + mul * 0.2)) * STEP
+  1093→    if (this.energy <= 0) {
+  1094→      this.energy = 0
+  1095→      this.sfx.lose()
+  1096→      this.setPhase('gameover')
+  1097→    }
+  1098→  }
+  1099→
+  1100→  private damage(amount: number, knockDir: number) {
+  1101→    const p = this.player
+  1102→    if (p.invuln > 0) return
+  1103→    this.energy = Math.max(0, this.energy - amount)
+  1104→    p.invuln = 75
+  1105→    p.vx = knockDir * 5
+  1106→    p.vy = Math.min(p.vy, -6)
+  1107→    this.shake = 8
+  1108→    this.spawnParticles(p.x + p.w / 2, p.y + p.h / 2, 10, 'spark')
+  1109→    this.sfx.hurt()
+  1110→    if (this.energy <= 0) {
+  1111→      this.energy = 0
+  1112→      this.sfx.lose()
+  1113→      this.setPhase('gameover')
+  1114→    }
+  1115→  }
+  1116→
+  1117→  private updateParticles() {
+  1118→    for (let i = this.particles.length - 1; i >= 0; i--) {
+  1119→      const q = this.particles[i]
+  1120→      q.life--
+  1121→      q.x += q.vx
+  1122→      q.y += q.vy
+  1123→      q.vy += q.grav
+  1124→      q.vx *= 0.98
+  1125→      if (q.life <= 0) this.particles.splice(i, 1)
+  1126→    }
+  1127→  }
+  1128→
+  1129→  spawnParticles(x: number, y: number, n: number, kind: Particle['kind']) {
+  1130→    const colors: Record<Particle['kind'], string[]> = {
+  1131→      spark: ['#ffd94d', '#ffb63d', '#fff3b0'],
+  1132→      poof: ['#c9b6d8', '#9c7fae', '#e6d9f0'],
+  1133→      star: ['#ffe873', '#a4f04a', '#7ee081'],
+  1134→      dust: ['#c9b08a', '#a8916e'],
+  1135→    }
+  1136→    for (let i = 0; i < n; i++) {
+  1137→      const a = Math.random() * Math.PI * 2
+  1138→      const sp = 1 + Math.random() * 2.6
+  1139→      this.particles.push({
+  1140→        x,
+  1141→        y,
+  1142→        vx: Math.cos(a) * sp,
+  1143→        vy: Math.sin(a) * sp - 1.2,
+  1144→        life: 22 + Math.random() * 18,
+  1145→        maxLife: 40,
+  1146→        size: 2 + Math.random() * 3,
+  1147→        color: colors[kind][Math.floor(Math.random() * colors[kind].length)],
+  1148→        kind,
+  1149→        grav: kind === 'poof' ? 0 : kind === 'dust' ? 0.08 : 0.14,
+  1150→      })
+  1151→    }
+  1152→    if (this.particles.length > 300) this.particles.splice(0, 100)
+  1153→  }
+  1154→
+  1155→  private updateCamera() {
+  1156→    const p = this.player
+  1157→    const targetX = clamp(
+  1158→      p.x + p.w / 2 + p.facing * 60 - VIEW_W / 2,
+  1159→      0,
+  1160→      Math.max(0, this.worldW - VIEW_W),
+  1161→    )
+  1162→    const targetY = clamp(
+  1163→      p.y + p.h / 2 - VIEW_H / 2,
+  1164→      0,
+  1165→      Math.max(0, this.worldH - VIEW_H),
+  1166→    )
+  1167→    this.camX += (targetX - this.camX) * 0.1
+  1168→    this.camY += (targetY - this.camY) * 0.12
+  1169→  }
+  1170→}
+  1171→
+  1172→// ---------- Утилиты ----------
+  1173→
+  1174→function rectsOverlap(a: Box, b: Box): boolean {
+  1175→  return (
+  1176→    a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+  1177→  )
+  1178→}
+  1179→
+  1180→function circleRect(
+  1181→  cx: number,
+  1182→  cy: number,
+  1183→  r: number,
+  1184→  rect: Box,
+  1185→): boolean {
+  1186→  const nx = Math.max(rect.x, Math.min(cx, rect.x + rect.w))
+  1187→  const ny = Math.max(rect.y, Math.min(cy, rect.y + rect.h))
+  1188→  const dx = cx - nx
+  1189→  const dy = cy - ny
+  1190→  return dx * dx + dy * dy <= r * r
+  1191→}
+  1192→
+  1193→function clamp(v: number, min: number, max: number): number {
+  1194→  return v < min ? min : v > max ? max : v
+  1195→}
+  1196→
+  1197→function countChar(map: string[], ch: string): number {
+  1198→  let n = 0
+  1199→  for (const row of map) for (const c of row) if (c === ch) n++
+  1200→  return n
+  1201→}
+  1202→

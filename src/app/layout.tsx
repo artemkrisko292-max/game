@@ -14,9 +14,9 @@ export const metadata: Metadata = {
     "2D игра",
     "ЭнергоГерой",
   ],
-  authors: [{ name: "Z.ai" }],
+  authors: [{ name: "Команда «ЭнергоГерой»" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/favicon.svg",
   },
   openGraph: {
     title: "ЭнергоГерой — 2D-платформер про энергосбережение",

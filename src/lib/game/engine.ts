@@ -7,6 +7,7 @@ import { render } from './render'
 import type {
   BulbE,
   CrumbE,
+  DeathCause,
   DroneE,
   ExitE,
   FuseE,
@@ -151,6 +152,12 @@ export class EnergoGame {
   runSwitchesTotal = 0
   result: Snapshot['result'] = null
   summary: RunSummary | null = null
+  /** Кадров с начала попытки (для хронометража). */
+  levelFrames = 0
+  /** Номер текущей попытки уровня. */
+  attempts = 1
+  /** Откуда пришло последнее повреждение — для акта об аварии. */
+  deathCause: DeathCause | null = null
 
   constructor(canvas: HTMLCanvasElement, cb: GameCallbacks) {
     this.canvas = canvas
@@ -177,13 +184,18 @@ export class EnergoGame {
   // ---------- Публичный API (вызывается из React) ----------
 
   startRun() {
+    this.selectLevel(0)
+  }
+
+  /** Запуск конкретного уровня (из карты уровней): с чистого забега. */
+  selectLevel(index: number) {
     this.sfx.ensure()
     this.score = 0
     this.runBulbs = 0
     this.runSwitches = 0
     this.summary = null
     this.result = null
-    this.loadLevel(0)
+    this.loadLevel(index)
     this.setPhase('intro')
   }
 
@@ -197,6 +209,7 @@ export class EnergoGame {
     this.runBulbs = this.startRunBulbs
     this.runSwitches = this.startRunSwitches
     this.loadLevel(this.levelIndex)
+    this.attempts++ // loadLevel сбрасывает счётчик — восстанавливаем
     this.setPhase('playing')
   }
 
@@ -237,6 +250,8 @@ export class EnergoGame {
       energy: this.energy,
       result: this.result,
       summary: this.summary,
+      attempt: this.attempts,
+      deathCause: this.deathCause,
     }
   }
 
@@ -513,6 +528,9 @@ export class EnergoGame {
     this.camY = 0
     this.shake = 0
     this.frame = 0
+    this.levelFrames = 0
+    this.attempts = 1
+    this.deathCause = null
     this.prevJump = false
   }
 
@@ -626,6 +644,7 @@ export class EnergoGame {
     const p = this.player
     const inp = this.input
     this.frame++
+    this.levelFrames++
     if (this.shake > 0) this.shake *= 0.85
 
     // Прыжок: буфер + койот-время
@@ -710,16 +729,17 @@ export class EnergoGame {
 
     // Провал за нижнюю границу мира (люки)
     if (p.y > this.worldH + 60) {
-      this.damage(DMG_FALL, 0)
+      this.damage(DMG_FALL, 0, 'fall')
       p.x = p.safeX
       p.y = p.safeY
       p.vx = 0
       p.vy = 0
     }
 
-    this.updateWalkers(this.vampires, DMG_VAMPIRE, 100)
-    this.updateWalkers(this.runners, DMG_RUNNER, SCORE_RUNNER)
+    this.updateWalkers(this.vampires, DMG_VAMPIRE, 100, 'vampire')
+    this.updateWalkers(this.runners, DMG_RUNNER, SCORE_RUNNER, 'runner')
     this.updateDrones()
+    this.updatePhantoms()
     this.updateCrumbs()
     this.updateFuses()
     this.updatePickups()
@@ -819,7 +839,12 @@ export class EnergoGame {
   // ---------- Сущности ----------
 
   /** Наземные ходячие враги (вампиры и гонцы). */
-  private updateWalkers(list: Vampire[], dmg: number, stompScore: number) {
+  private updateWalkers(
+    list: Vampire[],
+    dmg: number,
+    stompScore: number,
+    cause: DeathCause,
+  ) {
     const p = this.player
     for (const v of list) {
       if (v.dead) continue
@@ -851,7 +876,7 @@ export class EnergoGame {
           this.spawnParticles(v.x + v.w / 2, v.y + v.h / 2, 14, 'poof')
           this.sfx.stomp()
         } else {
-          this.damage(dmg, p.x < v.x + v.w / 2 ? -1 : 1)
+          this.damage(dmg, p.x < v.x + v.w / 2 ? -1 : 1, cause)
         }
       }
     }
@@ -896,7 +921,7 @@ export class EnergoGame {
           this.spawnParticles(d.x + d.w / 2, d.y + d.h / 2, 12, 'poof')
           this.sfx.stomp()
         } else {
-          this.damage(DMG_DRONE, p.x < d.x + d.w / 2 ? -1 : 1)
+          this.damage(DMG_DRONE, p.x < d.x + d.w / 2 ? -1 : 1, 'drone')
         }
       }
     }
@@ -960,7 +985,7 @@ export class EnergoGame {
       f.x = f.cx + Math.sin(f.phase) * f.amp
       f.y = f.cy + Math.sin(f.phase * 2.3) * 26
       if (p.invuln <= 0 && circleRect(f.x, f.y, 16, p)) {
-        this.damage(DMG_PHANTOM, p.x < f.x ? -1 : 1)
+        this.damage(DMG_PHANTOM, p.x < f.x ? -1 : 1, 'phantom')
         f.phase += Math.PI
       }
     }
@@ -1037,12 +1062,12 @@ export class EnergoGame {
       if (h.kind === 'spikes') {
         const box = { x: h.x - 16, y: h.y - 20, w: 32, h: 20 }
         if (rectsOverlap(p, box)) {
-          this.damage(DMG_SPIKES, p.x < h.x ? -1 : 1)
+          this.damage(DMG_SPIKES, p.x < h.x ? -1 : 1, 'spikes')
           this.spawnParticles(h.x, h.y - 10, 8, 'spark')
           break
         }
       } else if (circleRect(h.x, h.y - 14, 15, p)) {
-        this.damage(DMG_SOCKET, p.x < h.x ? -1 : 1)
+        this.damage(DMG_SOCKET, p.x < h.x ? -1 : 1, 'socket')
         this.spawnParticles(h.x, h.y - 16, 12, 'spark')
         break
       }
@@ -1074,6 +1099,7 @@ export class EnergoGame {
       fuses: this.fusesGot,
       fusesTotal: this.fusesTotal,
       score: this.score,
+      time: Math.round(this.levelFrames / 60),
     }
     this.shake = 4
     this.spawnParticles(p.x + p.w / 2, p.y, 16, 'star')
@@ -1092,12 +1118,13 @@ export class EnergoGame {
       (DRAIN_BASE * mul + this.lampDrain() * (0.8 + mul * 0.2)) * STEP
     if (this.energy <= 0) {
       this.energy = 0
+      this.deathCause = 'drain'
       this.sfx.lose()
       this.setPhase('gameover')
     }
   }
 
-  private damage(amount: number, knockDir: number) {
+  private damage(amount: number, knockDir: number, cause: DeathCause) {
     const p = this.player
     if (p.invuln > 0) return
     this.energy = Math.max(0, this.energy - amount)
@@ -1109,6 +1136,7 @@ export class EnergoGame {
     this.sfx.hurt()
     if (this.energy <= 0) {
       this.energy = 0
+      this.deathCause = cause
       this.sfx.lose()
       this.setPhase('gameover')
     }
