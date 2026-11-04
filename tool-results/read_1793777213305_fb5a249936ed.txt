@@ -1,0 +1,1275 @@
+     1→'use client'
+     2→
+     3→import { useCallback, useEffect, useRef, useState } from 'react'
+     4→import {
+     5→  BookOpenCheck,
+     6→  ChevronRight,
+     7→  DoorOpen,
+     8→  Ghost,
+     9→  Home,
+    10→  Lightbulb,
+    11→  Lock,
+    12→  Map,
+    13→  Music2,
+    14→  Pause,
+    15→  Play,
+    16→  Plug,
+    17→  RotateCcw,
+    18→  Star,
+    19→  ToggleLeft,
+    20→  TriangleAlert,
+    21→  Volume2,
+    22→  VolumeX,
+    23→} from 'lucide-react'
+    24→import { EnergoGame, VIEW_H, VIEW_W } from '@/lib/game/engine'
+    25→import { LEVELS } from '@/lib/game/levels'
+    26→import type { ThemeName } from '@/lib/game/levels'
+    27→import { Music } from '@/lib/game/music'
+    28→import type { LevelResult, Phase, RunSummary, Snapshot } from '@/lib/game/types'
+    29→
+    30→/* ------------------------------------------------------------------ */
+    31→/* Служебные данные и утилиты                                          */
+    32→/* ------------------------------------------------------------------ */
+    33→
+    34→const PROGRESS_KEY = 'energohero-progress-v1'
+    35→const PREF_MUSIC = 'energohero-music'
+    36→const PREF_SFX = 'energohero-sfx'
+    37→
+    38→interface Progress {
+    39→  unlocked: number // сколько уровней открыто (1…20)
+    40→  stars: number[]
+    41→  best: number[]
+    42→}
+    43→
+    44→const EMPTY_PROGRESS: Progress = {
+    45→  unlocked: 1,
+    46→  stars: Array(LEVELS.length).fill(0),
+    47→  best: Array(LEVELS.length).fill(0),
+    48→}
+    49→
+    50→function loadProgress(): Progress {
+    51→  try {
+    52→    const raw = localStorage.getItem(PROGRESS_KEY)
+    53→    if (!raw) return EMPTY_PROGRESS
+    54→    const p = JSON.parse(raw) as Partial<Progress>
+    55→    const stars = Array(LEVELS.length).fill(0)
+    56→    const best = Array(LEVELS.length).fill(0)
+    57→    ;(p.stars ?? []).forEach((v, i) => (stars[i] = Number(v) || 0))
+    58→    ;(p.best ?? []).forEach((v, i) => (best[i] = Number(v) || 0))
+    59→    return {
+    60→      unlocked: Math.min(LEVELS.length, Math.max(1, Number(p.unlocked) || 1)),
+    61→      stars,
+    62→      best,
+    63→    }
+    64→  } catch {
+    65→    return EMPTY_PROGRESS
+    66→  }
+    67→}
+    68→
+    69→function starsFromResult(r: LevelResult): number {
+    70→  const got = r.bulbs + r.switches + r.fuses
+    71→  const tot = r.bulbsTotal + r.switchesTotal + r.fusesTotal
+    72→  const pct = tot > 0 ? got / tot : 1
+    73→  return pct >= 0.9 ? 3 : pct >= 0.55 ? 2 : 1
+    74→}
+    75→
+    76→function saveLevelProgress(
+    77→  levelIndex: number,
+    78→  result: LevelResult | null,
+    79→  summary?: RunSummary | null,
+    80→) {
+    81→  try {
+    82→    const p = loadProgress()
+    83→    const stars = result ? starsFromResult(result) : (summary?.stars ?? 1)
+    84→    const score = result ? result.score : (summary?.score ?? 0)
+    85→    p.stars[levelIndex] = Math.max(p.stars[levelIndex] ?? 0, stars)
+    86→    p.best[levelIndex] = Math.max(p.best[levelIndex] ?? 0, score)
+    87→    p.unlocked = Math.min(
+    88→      LEVELS.length,
+    89→      Math.max(p.unlocked, levelIndex + 2),
+    90→    )
+    91→    localStorage.setItem(PROGRESS_KEY, JSON.stringify(p))
+    92→  } catch {
+    93→    /* localStorage недоступен */
+    94→  }
+    95→}
+    96→
+    97→const fmtTime = (s: number) =>
+    98→  `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+    99→
+   100→const countCh = (map: string[], chars: string) =>
+   101→  map.join('').split('').filter((c) => chars.includes(c)).length
+   102→
+   103→const DISTRICT: Record<ThemeName, string> = {
+   104→  bedroom: 'Жилой сектор',
+   105→  kitchen: 'Кухонный узел',
+   106→  basement: 'Подвальный ярус',
+   107→  living: 'Гостиная зона',
+   108→  attic: 'Чердачный пролёт',
+   109→  office: 'Офисный блок',
+   110→}
+   111→
+   112→/** Причина аварии → строка акта и совет. */
+   113→const CAUSES: Record<string, { title: string; tip: string }> = {
+   114→  drain: {
+   115→    title: 'Сеть обесточена: заряд исчерпан',
+   116→    tip: 'Держи запас: собирай LED-лампочки и гаси лишний свет — фоновый расход растёт с каждым уровнем.',
+   117→  },
+   118→  vampire: {
+   119→    title: 'ЭнергоВампир высосал заряд',
+   120→    tip: 'Вампиры медлительные: запрыгивай им на голову — это мгновенно отключает их.',
+   121→  },
+   122→  runner: {
+   123→    title: 'Гонец сбил с ног на полном ходу',
+   124→    tip: 'Гонцы быстрые, но не поворачивают: встречай прыжком сверху или переживи их на платформе.',
+   125→  },
+   126→  drone: {
+   127→    title: 'Дрон-пылесос всосал энергию',
+   128→    tip: 'Дроны летают по диагонали и отскакивают от стен — засеки траекторию и топчи сверху.',
+   129→  },
+   130→  phantom: {
+   131→    title: 'Фантомная нагрузка ударила током',
+   132→    tip: 'Фантомы ходят по кругу сквозь стены — проследи цикл и проскочи за спиной.',
+   133→  },
+   134→  socket: {
+   135→    title: 'Короткое замыкание в розетке',
+   136→    tip: 'Искрящиеся розетки бьют при касании — обходи их верхом или по платформам.',
+   137→  },
+   138→  spikes: {
+   139→    title: 'Укол о ржавую арматуру',
+   140→    tip: 'Шипы ниже, чем кажутся: обычный прыжок перекрывает их с запасом. Не наступай — перелетай.',
+   141→  },
+   142→  fall: {
+   143→    title: 'Падение в люк',
+   144→    tip: 'У края люка жми прыжок заранее: короткое койот-время ещё спасает на самом краю.',
+   145→  },
+   146→}
+   147→
+   148→const HOW_TO = [
+   149→  {
+   150→    icon: Lightbulb,
+   151→    title: 'Собирай LED-лампочки',
+   152→    text: 'Каждая даёт +8 энергии и 50 очков. Светодиодка тратит на 85% меньше лампы накаливания.',
+   153→  },
+   154→  {
+   155→    icon: ToggleLeft,
+   156→    title: 'Гаси лишний свет',
+   157→    text: 'Рубильник выключает группу ламп и прекращает слив энергии конусом света.',
+   158→  },
+   159→  {
+   160→    icon: TriangleAlert,
+   161→    title: 'Береги себя',
+   162→    text: 'Шипы, розетки и обвалы отнимают заряд. Враги бьют больнее — топчи их сверху.',
+   163→  },
+   164→  {
+   165→    icon: Plug,
+   166→    title: 'Ищи предохранители',
+   167→    text: 'Керамический ключ снимает замок со щитка на выходе. Без него — ни шагу дальше.',
+   168→  },
+   169→  {
+   170→    icon: Ghost,
+   171→    title: 'Знай врага в лицо',
+   172→    text: 'Вампир ходит, Гонец бежит, Дрон летает, Фантом парит сквозь стены. У каждого — свой цикл.',
+   173→  },
+   174→  {
+   175→    icon: DoorOpen,
+   176→    title: 'Успей к щитку',
+   177→    text: 'Энергия тает сама, и с каждым уровнем всё быстрее. Долго думать некогда.',
+   178→  },
+   179→]
+   180→
+   181→/* ------------------------------------------------------------------ */
+   182→/* Фирменный знак: гексагон с молнией                                  */
+   183→/* ------------------------------------------------------------------ */
+   184→
+   185→function Emblem({ className = '' }: { className?: string }) {
+   186→  return (
+   187→    <svg viewBox="0 0 48 52" className={className} aria-hidden="true">
+   188→      <path
+   189→        d="M24 2 44 13v26L24 50 4 39V13Z"
+   190→        fill="#221e17"
+   191→        stroke="#ffd23f"
+   192→        strokeWidth="2.5"
+   193→      />
+   194→      <path
+   195→        d="M27.5 12 15 28.5h7L19.5 40 33 23h-7.5L27.5 12Z"
+   196→        fill="#ffd23f"
+   197→        stroke="#221e17"
+   198→        strokeWidth="1.4"
+   199→        strokeLinejoin="round"
+   200→      />
+   201→    </svg>
+   202→  )
+   203→}
+   204→
+   205→/* ------------------------------------------------------------------ */
+   206→/* ГЛАВНЫЙ КОМПОНЕНТ                                                   */
+   207→/* ------------------------------------------------------------------ */
+   208→
+   209→export default function EnergoHeroGame() {
+   210→  const canvasRef = useRef<HTMLCanvasElement>(null)
+   211→  const gameRef = useRef<EnergoGame | null>(null)
+   212→  const musicRef = useRef<Music | null>(null)
+   213→  const [phase, setPhase] = useState<Phase>('menu')
+   214→  const [snap, setSnap] = useState<Snapshot | null>(null)
+   215→  const [musicOn, setMusicOn] = useState(true)
+   216→  const [sfxOn, setSfxOn] = useState(true)
+   217→  const [isTouch, setIsTouch] = useState(false)
+   218→  const [best, setBest] = useState(0)
+   219→  const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS)
+   220→  const [menuView, setMenuView] = useState<'main' | 'levels' | 'howto'>('main')
+   221→
+   222→  useEffect(() => {
+   223→    const canvas = canvasRef.current
+   224→    if (!canvas) return
+   225→    const dpr = Math.min(2, window.devicePixelRatio || 1)
+   226→    canvas.width = VIEW_W * dpr
+   227→    canvas.height = VIEW_H * dpr
+   228→    const ctx = canvas.getContext('2d')
+   229→    if (!ctx) return
+   230→    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+   231→
+   232→    const music = new Music()
+   233→    musicRef.current = music
+   234→
+   235→    let mOn = true
+   236→    let sOn = true
+   237→    try {
+   238→      mOn = localStorage.getItem(PREF_MUSIC) !== 'off'
+   239→      sOn = localStorage.getItem(PREF_SFX) !== 'off'
+   240→    } catch {
+   241→      /* ignore */
+   242→    }
+   243→    music.enabled = mOn
+   244→
+   245→    const game = new EnergoGame(canvas, {
+   246→      onPhase: (s) => {
+   247→        setPhase(s.phase)
+   248→        setSnap(s)
+   249→        if (s.phase === 'menu' || s.phase === 'intro') {
+   250→          if (music.enabled) music.start()
+   251→          music.setDuck(0.55)
+   252→        } else if (s.phase === 'playing') {
+   253→          music.setDuck(1)
+   254→        } else if (s.phase === 'paused' || s.phase === 'complete') {
+   255→          music.setDuck(0.3)
+   256→        } else if (s.phase === 'gameover' || s.phase === 'victory') {
+   257→          music.stop()
+   258→        }
+   259→        if (s.phase === 'complete' && s.result) {
+   260→          saveLevelProgress(s.levelIndex, s.result)
+   261→          setProgress(loadProgress())
+   262→        }
+   263→        if (s.phase === 'victory' && s.summary) {
+   264→          saveLevelProgress(s.levelIndex, null, s.summary)
+   265→          setProgress(loadProgress())
+   266→          try {
+   267→            setBest(
+   268→              Number(localStorage.getItem('energohero-best') ?? '0') || 0,
+   269→            )
+   270→          } catch {
+   271→            /* ignore */
+   272→          }
+   273→        }
+   274→      },
+   275→    })
+   276→    game.sfx.muted = !sOn
+   277→    gameRef.current = game
+   278→    // Отладочный хук (используется автотестами: __energo.loadLevel(n))
+   279→    ;(window as unknown as { __energo?: EnergoGame }).__energo = game
+   280→
+   281→    // Отложенная инициализация некритичного UI-состояния
+   282→    const raf = requestAnimationFrame(() => {
+   283→      setIsTouch(
+   284→        window.matchMedia('(pointer: coarse)').matches ||
+   285→          'ontouchstart' in window ||
+   286→          window.innerWidth < 768,
+   287→      )
+   288→      setProgress(loadProgress())
+   289→      setMusicOn(mOn)
+   290→      setSfxOn(sOn)
+   291→      try {
+   292→        setBest(Number(localStorage.getItem('energohero-best') ?? '0') || 0)
+   293→      } catch {
+   294→        /* ignore */
+   295→      }
+   296→    })
+   297→
+   298→    // Музыка стартует после первого жеста пользователя (политика автоплея)
+   299→    const kick = () => {
+   300→      if (music.enabled) music.start()
+   301→    }
+   302→    window.addEventListener('pointerdown', kick, { once: true })
+   303→    window.addEventListener('keydown', kick, { once: true })
+   304→
+   305→    return () => {
+   306→      cancelAnimationFrame(raf)
+   307→      window.removeEventListener('pointerdown', kick)
+   308→      window.removeEventListener('keydown', kick)
+   309→      music.stop()
+   310→      game.destroy()
+   311→      gameRef.current = null
+   312→    }
+   313→  }, [])
+   314→
+   315→  const act = useCallback(
+   316→    (
+   317→      action:
+   318→        | 'start'
+   319→        | 'begin'
+   320→        | 'retry'
+   321→        | 'next'
+   322→        | 'menu'
+   323→        | 'pause'
+   324→        | { select: number },
+   325→    ) => {
+   326→      const g = gameRef.current
+   327→      if (!g) return
+   328→      if (typeof action === 'object') {
+   329→        g.selectLevel(action.select)
+   330→        return
+   331→      }
+   332→      switch (action) {
+   333→        case 'start':
+   334→          g.startRun()
+   335→          break
+   336→        case 'begin':
+   337→          g.beginLevel()
+   338→          break
+   339→        case 'retry':
+   340→          g.retryLevel()
+   341→          break
+   342→        case 'next':
+   343→          g.nextLevel()
+   344→          break
+   345→        case 'menu':
+   346→          g.toMenu()
+   347→          break
+   348→        case 'pause':
+   349→          g.togglePause()
+   350→          break
+   351→      }
+   352→    },
+   353→    [],
+   354→  )
+   355→
+   356→  // Enter — основное действие на оверлеях
+   357→  useEffect(() => {
+   358→    const onKey = (e: KeyboardEvent) => {
+   359→      if (e.code !== 'Enter' && e.code !== 'NumpadEnter' && e.key !== 'Enter')
+   360→        return
+   361→      if (phase === 'menu') act('start')
+   362→      else if (phase === 'intro') act('begin')
+   363→      else if (phase === 'complete') act('next')
+   364→      else if (phase === 'gameover') act('retry')
+   365→      else if (phase === 'victory') act('start')
+   366→      else if (phase === 'paused') act('pause')
+   367→    }
+   368→    window.addEventListener('keydown', onKey)
+   369→    return () => window.removeEventListener('keydown', onKey)
+   370→  }, [phase, act])
+   371→
+   372→  const hold = useCallback(
+   373→    (k: 'left' | 'right' | 'jump') => ({
+   374→      onPointerDown: (e: React.PointerEvent) => {
+   375→        e.preventDefault()
+   376→        gameRef.current?.setTouch(k, true)
+   377→      },
+   378→      onPointerUp: () => gameRef.current?.setTouch(k, false),
+   379→      onPointerLeave: () => gameRef.current?.setTouch(k, false),
+   380→      onPointerCancel: () => gameRef.current?.setTouch(k, false),
+   381→    }),
+   382→    [],
+   383→  )
+   384→
+   385→  const toggleMusic = useCallback(() => {
+   386→    setMusicOn((v) => {
+   387→      const nv = !v
+   388→      musicRef.current?.setEnabled(nv)
+   389→      try {
+   390→        localStorage.setItem(PREF_MUSIC, nv ? 'on' : 'off')
+   391→      } catch {
+   392→        /* ignore */
+   393→      }
+   394→      return nv
+   395→    })
+   396→  }, [])
+   397→
+   398→  const toggleSfx = useCallback(() => {
+   399→    setSfxOn((v) => {
+   400→      const nv = !v
+   401→      if (gameRef.current) gameRef.current.sfx.muted = !nv
+   402→      try {
+   403→        localStorage.setItem(PREF_SFX, nv ? 'on' : 'off')
+   404→      } catch {
+   405→        /* ignore */
+   406→      }
+   407→      return nv
+   408→    })
+   409→  }, [])
+   410→
+   411→  const playing = phase === 'playing' || phase === 'paused'
+   412→
+   413→  return (
+   414→    <div className="ah-grid-bg flex min-h-screen w-full flex-col items-center justify-center gap-3 p-2 text-[#efe7d2] sm:p-4">
+   415→      <main className="w-full max-w-[1080px]">
+   416→        <div className="relative aspect-[16/9] max-md:aspect-[4/5] w-full overflow-hidden rounded-md border-2 border-[#2a2f28] bg-[#0b0d0c] shadow-[0_0_0_6px_rgba(255,255,255,0.03),0_24px_70px_rgba(0,0,0,0.6)]">
+   417→          <canvas
+   418→            ref={canvasRef}
+   419→            className="absolute inset-0 h-full w-full object-contain"
+   420→            aria-label="Игровое поле ЭнергоГероя"
+   421→          />
+   422→
+   423→          {/* Кнопки музыки, звука и паузы */}
+   424→          <div className="absolute right-2 top-2 z-20 flex gap-1.5">
+   425→            <CanvasIconBtn
+   426→              label={musicOn ? 'Выключить музыку' : 'Включить музыку'}
+   427→              on={musicOn}
+   428→              onClick={toggleMusic}
+   429→            >
+   430→              <Music2 className="h-4 w-4" />
+   431→            </CanvasIconBtn>
+   432→            <CanvasIconBtn
+   433→              label={sfxOn ? 'Выключить звук' : 'Включить звук'}
+   434→              on={sfxOn}
+   435→              onClick={toggleSfx}
+   436→            >
+   437→              {sfxOn ? (
+   438→                <Volume2 className="h-4 w-4" />
+   439→              ) : (
+   440→                <VolumeX className="h-4 w-4" />
+   441→              )}
+   442→            </CanvasIconBtn>
+   443→            {playing && (
+   444→              <CanvasIconBtn
+   445→                label="Пауза"
+   446→                on
+   447→                onClick={() => act('pause')}
+   448→              >
+   449→                <Pause className="h-4 w-4" />
+   450→              </CanvasIconBtn>
+   451→            )}
+   452→          </div>
+   453→
+   454→          {/* ---------- Оверлеи ---------- */}
+   455→          {phase === 'menu' && (
+   456→            <Overlay>
+   457→              {menuView === 'main' && (
+   458→                <MenuMain
+   459→                  best={best}
+   460→                  unlocked={progress.unlocked}
+   461→                  onContinue={() => act({ select: progress.unlocked - 1 })}
+   462→                  onFresh={() => act('start')}
+   463→                  onLevels={() => setMenuView('levels')}
+   464→                  onHowto={() => setMenuView('howto')}
+   465→                />
+   466→              )}
+   467→              {menuView === 'levels' && (
+   468→                <MenuLevels
+   469→                  progress={progress}
+   470→                  onPick={(i) => {
+   471→                    setMenuView('main')
+   472→                    act({ select: i })
+   473→                  }}
+   474→                  onClose={() => setMenuView('main')}
+   475→                />
+   476→              )}
+   477→              {menuView === 'howto' && (
+   478→                <MenuHowto onClose={() => setMenuView('main')} />
+   479→              )}
+   480→            </Overlay>
+   481→          )}
+   482→
+   483→          {phase === 'intro' && snap && (
+   484→            <Overlay>
+   485→              <IntroDoc snap={snap} onBegin={() => act('begin')} />
+   486→            </Overlay>
+   487→          )}
+   488→
+   489→          {phase === 'paused' && (
+   490→            <Overlay>
+   491→              <PauseDoc
+   492→                musicOn={musicOn}
+   493→                sfxOn={sfxOn}
+   494→                onToggleMusic={toggleMusic}
+   495→                onToggleSfx={toggleSfx}
+   496→                onResume={() => act('pause')}
+   497→                onRetry={() => act('retry')}
+   498→                onMenu={() => act('menu')}
+   499→              />
+   500→            </Overlay>
+   501→          )}
+   502→
+   503→          {phase === 'complete' && snap?.result && (
+   504→            <Overlay>
+   505→              <CompleteDoc
+   506→                snap={snap}
+   507→                onNext={() => act('next')}
+   508→                onRetry={() => act('retry')}
+   509→                onMenu={() => act('menu')}
+   510→              />
+   511→            </Overlay>
+   512→          )}
+   513→
+   514→          {phase === 'gameover' && snap && (
+   515→            <Overlay>
+   516→              <GameOverDoc
+   517→                snap={snap}
+   518→                onRetry={() => act('retry')}
+   519→                onMenu={() => act('menu')}
+   520→              />
+   521→            </Overlay>
+   522→          )}
+   523→
+   524→          {phase === 'victory' && snap?.summary && (
+   525→            <Overlay>
+   526→              <VictoryDoc
+   527→                snap={snap}
+   528→                best={best}
+   529→                onRestart={() => act('start')}
+   530→                onLevels={() => {
+   531→                  setMenuView('levels')
+   532→                  act('menu')
+   533→                }}
+   534→                onMenu={() => act('menu')}
+   535→              />
+   536→            </Overlay>
+   537→          )}
+   538→        </div>
+   539→
+   540→        {/* ---------- Сенсорное управление ---------- */}
+   541→        {isTouch && (
+   542→          <div className="mt-3 flex w-full select-none items-center justify-between gap-4 px-2">
+   543→            <div className="flex gap-3">
+   544→              <TouchBtn label="←" {...hold('left')} />
+   545→              <TouchBtn label="→" {...hold('right')} />
+   546→            </div>
+   547→            <TouchBtn label="ПРЫЖОК" wide {...hold('jump')} />
+   548→          </div>
+   549→        )}
+   550→      </main>
+   551→
+   552→      <footer className="mt-auto flex select-none items-center gap-2 pb-2 text-[11px] tracking-wide text-[#efe7d2]/35">
+   553→        <Emblem className="h-4 w-auto" />
+   554→        <span className="font-mono uppercase">
+   555→          Форма ЭГ-7 · ЭнергоГерой — платформер об энергосбережении · выключайте
+   556→          свет и в жизни
+   557→        </span>
+   558→      </footer>
+   559→    </div>
+   560→  )
+   561→}
+   562→
+   563→/* ------------------------------------------------------------------ */
+   564→/* Экраны                                                              */
+   565→/* ------------------------------------------------------------------ */
+   566→
+   567→function Overlay({ children }: { children: React.ReactNode }) {
+   568→  return (
+   569→    <div className="absolute inset-0 z-10 flex overflow-y-auto bg-[#070a08]/78 p-3 backdrop-blur-[2.5px]">
+   570→      <div className="m-auto w-full max-w-2xl py-2 text-center">{children}</div>
+   571→    </div>
+   572→  )
+   573→}
+   574→
+   575→function MenuMain({
+   576→  best,
+   577→  unlocked,
+   578→  onContinue,
+   579→  onFresh,
+   580→  onLevels,
+   581→  onHowto,
+   582→}: {
+   583→  best: number
+   584→  unlocked: number
+   585→  onContinue: () => void
+   586→  onFresh: () => void
+   587→  onLevels: () => void
+   588→  onHowto: () => void
+   589→}) {
+   590→  return (
+   591→    <Doc docNo="ЭГ-7" title="УПРАВЛЕНИЕ НАРЯДАМИ" tone="tape">
+   592→      <div className="flex flex-col items-center gap-1.5">
+   593→        <div className="flex items-center justify-center gap-3">
+   594→          <Emblem className="ah-float h-12 w-auto sm:h-14" />
+   595→          <div className="text-left">
+   596→            <h1 className="text-3xl font-black leading-none tracking-[0.08em] text-[#221e17] sm:text-5xl">
+   597→              ЭНЕРГОГЕРОЙ
+   598→            </h1>
+   599→            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.32em] text-[#6b6455] sm:text-[11px]">
+   600→              Ведомство сбережения энергии
+   601→            </p>
+   602→          </div>
+   603→        </div>
+   604→        <p className="mx-auto mt-3 max-w-lg text-[13px] leading-relaxed text-[#4b443a] sm:text-sm">
+   605→          Ты — <b>Вжик</b>, светодиодная лампочка в плаще. По дому рыщут
+   606→          ЭнергоВампиры, Гонцы и Дроны, а счётчик крутится всё быстрее.
+   607→          Двадцать нарядов — и каждый злее предыдущего.
+   608→        </p>
+   609→      </div>
+   610→
+   611→      <div className="mx-auto mt-5 flex w-full max-w-xs flex-col gap-2">
+   612→        {unlocked > 1 && (
+   613→          <InkButton onClick={onContinue} size="lg">
+   614→            ПРОДОЛЖИТЬ · УРОВЕНЬ {unlocked} <ChevronRight className="h-4 w-4" />
+   615→          </InkButton>
+   616→        )}
+   617→        <InkButton onClick={onFresh} tone={unlocked > 1 ? 'paper' : 'primary'} size={unlocked > 1 ? 'md' : 'lg'}>
+   618→          <Play className="h-4 w-4" />{' '}
+   619→          {unlocked > 1 ? 'ЗАНОВО, С ПЕРВОГО УРОВНЯ' : 'НАЧАТЬ СМЕНУ'}
+   620→        </InkButton>
+   621→        <div className="flex gap-2">
+   622→          <InkButton onClick={onLevels} tone="paper" className="flex-1">
+   623→            <Map className="h-4 w-4" /> УРОВНИ
+   624→          </InkButton>
+   625→          <InkButton onClick={onHowto} tone="paper" className="flex-1">
+   626→            <BookOpenCheck className="h-4 w-4" /> ПАМЯТКА
+   627→          </InkButton>
+   628→        </div>
+   629→      </div>
+   630→
+   631→      <div className="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[#6b6455]">
+   632→        {best > 0 && (
+   633→          <span className="flex items-center gap-1 text-[#8a6a12]">
+   634→            <Star className="h-3 w-3 fill-[#ffd23f] stroke-[#221e17]" />
+   635→            Рекорд: {best}
+   636→          </span>
+   637→        )}
+   638→        <span>←→ / AD — бег · Space — прыжок · P — перерыв</span>
+   639→      </div>
+   640→    </Doc>
+   641→  )
+   642→}
+   643→
+   644→function MenuLevels({
+   645→  progress,
+   646→  onPick,
+   647→  onClose,
+   648→}: {
+   649→  progress: Progress
+   650→  onPick: (i: number) => void
+   651→  onClose: () => void
+   652→}) {
+   653→  return (
+   654→    <Doc docNo="ЭГ-12" title="ЖУРНАЛ НАРЯДОВ" tone="tape">
+   655→      <p className="mx-auto max-w-md text-xs leading-relaxed text-[#4b443a]">
+   656→        Каждый наряд — отдельная комната дома. Звезды ставят за сбор: 3 — почти
+   657→        всё собрано, 1 — дошёл до щитка. Открыт уровень{' '}
+   658→        <b className="text-[#221e17]">№ {progress.unlocked}</b> из{' '}
+   659→        {LEVELS.length}.
+   660→      </p>
+   661→      <div className="mx-auto mt-4 grid max-w-xl grid-cols-4 gap-1.5 sm:grid-cols-5">
+   662→        {LEVELS.map((lv, i) => {
+   663→          const locked = i + 1 > progress.unlocked
+   664→          const stars = progress.stars[i] ?? 0
+   665→          return (
+   666→            <button
+   667→              key={lv.name}
+   668→              disabled={locked}
+   669→              onClick={() => onPick(i)}
+   670→              title={locked ? 'Наряд ещё не выдан' : `${lv.name}`}
+   671→              className={`ah-pop relative flex h-[74px] flex-col items-center justify-center gap-0.5 rounded-[3px] border-2 px-1 transition-all ${
+   672→                locked
+   673→                  ? 'ah-hatch cursor-not-allowed border-[#c9c0a6] text-[#a09880]'
+   674→                  : 'border-[#221e17] bg-[#faf5e4] text-[#221e17] shadow-[3px_3px_0_rgba(34,30,23,0.35)] hover:-translate-y-0.5 hover:shadow-[4px_5px_0_rgba(34,30,23,0.4)] active:translate-y-0 active:shadow-[1px_1px_0_rgba(34,30,23,0.4)]'
+   675→              }`}
+   676→              style={{ animationDelay: `${i * 18}ms` }}
+   677→            >
+   678→              {locked ? (
+   679→                <Lock className="h-4 w-4" />
+   680→              ) : (
+   681→                <>
+   682→                  <span className="font-mono text-[9px] tracking-widest text-[#8a8171]">
+   683→                    №{String(i + 1).padStart(2, '0')}
+   684→                  </span>
+   685→                  <span className="line-clamp-2 text-[11px] font-black leading-tight">
+   686→                    {lv.name}
+   687→                  </span>
+   688→                  <span className="flex gap-0.5">
+   689→                    {[0, 1, 2].map((k) => (
+   690→                      <Star
+   691→                        key={k}
+   692→                        className={`h-2.5 w-2.5 ${
+   693→                          k < stars
+   694→                            ? 'fill-[#ffd23f] stroke-[#221e17]'
+   695→                            : 'fill-transparent stroke-[#b7ad93]'
+   696→                        }`}
+   697→                      />
+   698→                    ))}
+   699→                  </span>
+   700→                </>
+   701→              )}
+   702→            </button>
+   703→          )
+   704→        })}
+   705→      </div>
+   706→      <div className="mt-4">
+   707→        <InkButton onClick={onClose} tone="ink">
+   708→          ЗАКРЫТЬ ЖУРНАЛ
+   709→        </InkButton>
+   710→      </div>
+   711→    </Doc>
+   712→  )
+   713→}
+   714→
+   715→function MenuHowto({ onClose }: { onClose: () => void }) {
+   716→  return (
+   717→    <Doc docNo="ЭГ-3" title="ПАМЯТКА · ОХРАНА СВЕТА" tone="tape">
+   718→      <div className="mx-auto grid max-w-xl gap-1.5 text-left sm:grid-cols-2">
+   719→        {HOW_TO.map((h, i) => (
+   720→          <div
+   721→            key={h.title}
+   722→            className="ah-pop flex items-start gap-2.5 border-2 border-[#221e17]/15 bg-[#faf5e4] p-2"
+   723→            style={{ animationDelay: `${i * 45}ms` }}
+   724→          >
+   725→            <span className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-[#221e17] bg-[#ffd23f]">
+   726→              <h.icon className="h-4 w-4 text-[#221e17]" />
+   727→            </span>
+   728→            <span>
+   729→              <span className="block text-[12px] font-black uppercase tracking-wide leading-tight text-[#221e17]">
+   730→                {h.title}
+   731→              </span>
+   732→              <span className="mt-0.5 block text-[11px] leading-snug text-[#6b6455]">
+   733→                {h.text}
+   734→              </span>
+   735→            </span>
+   736→          </div>
+   737→        ))}
+   738→      </div>
+   739→      <div className="mt-4">
+   740→        <InkButton onClick={onClose} tone="ink">
+   741→          ПОНЯТНО, РАБОТАЮ
+   742→        </InkButton>
+   743→      </div>
+   744→    </Doc>
+   745→  )
+   746→}
+   747→
+   748→function IntroDoc({ snap, onBegin }: { snap: Snapshot; onBegin: () => void }) {
+   749→  const def = LEVELS[snap.levelIndex]
+   750→  const nBulbs = countCh(def.map, 'B')
+   751→  const nSwitches = countCh(def.map, 'ST')
+   752→  const nFuses = countCh(def.map, 'K')
+   753→  const rows: [string, string][] = [
+   754→    ['LED-лампочки', `${nBulbs} шт.`],
+   755→    ['Рубильники', `${nSwitches} шт.`],
+   756→    ['Предохранители', nFuses > 0 ? `${nFuses} шт.` : '—'],
+   757→    ['Щиток на выходе', 'включить'],
+   758→  ]
+   759→  return (
+   760→    <Doc
+   761→      docNo={`ЭГ-${String(snap.levelIndex + 1).padStart(2, '0')}/${LEVELS.length}`}
+   762→      title="НАРЯД-ДОПУСК"
+   763→    >
+   764→      {snap.badge && (
+   765→        <div className="mb-3 flex justify-center">
+   766→          <span className="ah-stamp inline-flex -rotate-1 items-center gap-1.5 border-2 border-[#221e17] bg-[#ffd23f] px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-[#221e17]">
+   767→            <TriangleAlert className="h-3.5 w-3.5" /> {snap.badge}
+   768→          </span>
+   769→        </div>
+   770→      )}
+   771→
+   772→      <div className="mx-auto max-w-md text-left">
+   773→        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-[#8a8171]">
+   774→          {snap.levelSubtitle}
+   775→        </p>
+   776→        <h2 className="mt-0.5 text-3xl font-black tracking-wide text-[#221e17] sm:text-4xl">
+   777→          {snap.levelName}
+   778→        </h2>
+   779→
+   780→        <div className="mt-4 border-2 border-[#221e17]/25 bg-[#faf5e4] p-3">
+   781→          <FieldRow label="Участок" value={DISTRICT[def.theme]} />
+   782→          <FieldRow label="Ответственный" value="Вжик · лампочка 1-го разряда" />
+   783→          <div className="mt-2 border-t-2 border-dotted border-[#221e17]/20 pt-2">
+   784→            <p className="font-mono text-[9px] uppercase tracking-[0.28em] text-[#8a8171]">
+   785→              Состав работ
+   786→            </p>
+   787→            <ul className="mt-1">
+   788→              {rows.map(([k, v]) => (
+   789→                <li key={k} className="flex items-baseline text-[13px] font-bold text-[#221e17]">
+   790→                  <span>{k}</span>
+   791→                  <span className="ah-leader" />
+   792→                  <span className="font-mono text-xs">{v}</span>
+   793→                </li>
+   794→              ))}
+   795→            </ul>
+   796→          </div>
+   797→        </div>
+   798→
+   799→        <div className="mt-3 border-l-4 border-[#ffd23f] bg-[#efe7cd] px-3 py-2 text-left">
+   800→          <p className="font-mono text-[9px] uppercase tracking-[0.28em] text-[#8a8171]">
+   801→            Примечание к наряду
+   802→          </p>
+   803→          <p className="mt-0.5 text-[12.5px] leading-relaxed text-[#4b443a]">
+   804→            {snap.hint}
+   805→          </p>
+   806→        </div>
+   807→      </div>
+   808→
+   809→      <div className="mt-5">
+   810→        <InkButton onClick={onBegin} size="lg">
+   811→          ПОДПИСАТЬ · ВЫЙТИ НА СМЕНУ <ChevronRight className="h-4 w-4" />
+   812→        </InkButton>
+   813→      </div>
+   814→    </Doc>
+   815→  )
+   816→}
+   817→
+   818→function CompleteDoc({
+   819→  snap,
+   820→  onNext,
+   821→  onRetry,
+   822→  onMenu,
+   823→}: {
+   824→  snap: Snapshot
+   825→  onNext: () => void
+   826→  onRetry: () => void
+   827→  onMenu: () => void
+   828→}) {
+   829→  const r = snap.result!
+   830→  const rank =
+   831→    r.bulbs / Math.max(1, r.bulbsTotal) >= 0.95 &&
+   832→    r.switches / Math.max(1, r.switchesTotal) >= 0.95 &&
+   833→    (r.fusesTotal === 0 || r.fuses / r.fusesTotal >= 0.95)
+   834→      ? 'S'
+   835→      : starsFromResult(r) === 3
+   836→        ? 'A'
+   837→        : starsFromResult(r) === 2
+   838→          ? 'B'
+   839→          : 'C'
+   840→  return (
+   841→    <Doc
+   842→      docNo={`ЭГ-${String(snap.levelIndex + 1).padStart(2, '0')}/АКТ`}
+   843→      title="АКТ ВЫПОЛНЕННЫХ РАБОТ"
+   844→      tone="tape"
+   845→    >
+   846→      <span className="ah-stamp ah-stamp-ok absolute right-4 top-14 rotate-6 px-3 py-1 text-sm font-black uppercase tracking-[0.3em] sm:right-7">
+   847→        Зачтено
+   848→      </span>
+   849→      <span className="absolute right-6 top-[74px] flex h-9 w-9 rotate-6 items-center justify-center rounded-full border-[3px] border-[#2e7d43] font-mono text-lg font-black text-[#2e7d43] mix-blend-multiply sm:right-9">
+   850→        {rank}
+   851→      </span>
+   852→
+   853→      <h2 className="text-2xl font-black tracking-wide text-[#221e17] sm:text-3xl">
+   854→        «{r.levelName}» — свет восстановлен
+   855→      </h2>
+   856→      <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.28em] text-[#8a8171]">
+   857→        {snap.levelSubtitle}
+   858→      </p>
+   859→
+   860→      <div className="mx-auto mt-4 max-w-sm text-left">
+   861→        <LedgerRow k="LED-лампочки" v={`${r.bulbs}/${r.bulbsTotal}`} />
+   862→        <LedgerRow k="Рубильники" v={`${r.switches}/${r.switchesTotal}`} />
+   863→        {r.fusesTotal > 0 && (
+   864→          <LedgerRow k="Предохранители" v={`${r.fuses}/${r.fusesTotal}`} />
+   865→        )}
+   866→        <LedgerRow
+   867→          k="Энергия на счету"
+   868→          v={`${r.energy}% · бонус +${r.bonus}`}
+   869→        />
+   870→        <LedgerRow k="Хронометраж" v={fmtTime(r.time)} />
+   871→        <div className="mt-1 flex items-baseline border-t-2 border-[#221e17]/60 pt-1.5">
+   872→          <span className="text-sm font-black uppercase tracking-widest text-[#221e17]">
+   873→            Итого
+   874→          </span>
+   875→          <span className="ah-leader" />
+   876→          <span className="font-mono text-xl font-black text-[#221e17]">
+   877→            <ScoreCount value={r.score} />
+   878→          </span>
+   879→        </div>
+   880→      </div>
+   881→
+   882→      <LevelDots current={snap.levelIndex} />
+   883→
+   884→      <div className="mt-4 flex flex-wrap justify-center gap-2">
+   885→        <InkButton onClick={onNext} size="lg">
+   886→          СЛЕДУЮЩИЙ НАРЯД <ChevronRight className="h-4 w-4" />
+   887→        </InkButton>
+   888→        <InkButton onClick={onRetry} tone="paper">
+   889→          <RotateCcw className="h-4 w-4" /> ПЕРЕСДАТЬ
+   890→        </InkButton>
+   891→        <InkButton onClick={onMenu} tone="ink">
+   892→          <Home className="h-4 w-4" /> В УПРАВЛЕНИЕ
+   893→        </InkButton>
+   894→      </div>
+   895→    </Doc>
+   896→  )
+   897→}
+   898→
+   899→function GameOverDoc({
+   900→  snap,
+   901→  onRetry,
+   902→  onMenu,
+   903→}: {
+   904→  snap: Snapshot
+   905→  onRetry: () => void
+   906→  onMenu: () => void
+   907→}) {
+   908→  const cause = CAUSES[snap.deathCause ?? 'drain'] ?? CAUSES.drain
+   909→  return (
+   910→    <Doc
+   911→      docNo={`ЭГ-${String(snap.levelIndex + 1).padStart(2, '0')}/АВ`}
+   912→      title="АКТ ОБ АВАРИИ"
+   913→      tone="tape-red"
+   914→    >
+   915→      <span className="ah-stamp ah-stamp-bad absolute right-4 top-14 -rotate-6 px-3 py-1 text-sm font-black uppercase tracking-[0.3em] sm:right-7">
+   916→        Отказ
+   917→      </span>
+   918→      <Ghost className="mx-auto mt-1 h-10 w-10 text-[#c8402e]" />
+   919→      <h2 className="mt-1 text-2xl font-black tracking-wide text-[#221e17] sm:text-3xl">
+   920→        {cause.title}
+   921→      </h2>
+   922→      <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.28em] text-[#8a8171]">
+   923→        {snap.levelSubtitle} · попытка № {snap.attempt}
+   924→      </p>
+   925→
+   926→      <div className="mx-auto mt-3 max-w-md border-l-4 border-[#c8402e] bg-[#f3e4d4] px-3 py-2 text-left">
+   927→        <p className="font-mono text-[9px] uppercase tracking-[0.28em] text-[#8a8171]">
+   928→          Рекомендация комиссии
+   929→        </p>
+   930→        <p className="mt-0.5 text-[12.5px] leading-relaxed text-[#4b443a]">
+   931→          {cause.tip}
+   932→        </p>
+   933→      </div>
+   934→
+   935→      <div className="mx-auto mt-3 max-w-sm text-left">
+   936→        <LedgerRow k="Наряд" v={`№ ${snap.levelIndex + 1} · ${snap.levelName}`} />
+   937→        <LedgerRow k="Очки к моменту аварии" v={String(snap.score)} />
+   938→      </div>
+   939→
+   940→      <div className="mt-4 flex flex-wrap justify-center gap-2">
+   941→        <InkButton onClick={onRetry} tone="danger" size="lg">
+   942→          <RotateCcw className="h-4 w-4" /> ПОВТОРИТЬ НАРЯД
+   943→        </InkButton>
+   944→        <InkButton onClick={onMenu} tone="ink">
+   945→          <Home className="h-4 w-4" /> В УПРАВЛЕНИЕ
+   946→        </InkButton>
+   947→      </div>
+   948→    </Doc>
+   949→  )
+   950→}
+   951→
+   952→function VictoryDoc({
+   953→  snap,
+   954→  best,
+   955→  onRestart,
+   956→  onLevels,
+   957→  onMenu,
+   958→}: {
+   959→  snap: Snapshot
+   960→  best: number
+   961→  onRestart: () => void
+   962→  onLevels: () => void
+   963→  onMenu: () => void
+   964→}) {
+   965→  const s = snap.summary!
+   966→  const isRecord = s.score > 0 && s.score >= best
+   967→  return (
+   968→    <Doc docNo="ЭГ-20/ИТГ" title="ОТЧЁТ ПО ОБЪЕКТУ · ЗАКРЫТ" tone="tape">
+   969→      <div className="flex justify-center gap-2">
+   970→        {[0, 1, 2].map((i) => (
+   971→          <Star
+   972→            key={i}
+   973→            className={`ah-pop h-10 w-10 sm:h-12 sm:w-12 ${
+   974→              i < s.stars
+   975→                ? 'fill-[#ffd23f] stroke-[#221e17] drop-shadow-[0_3px_0_rgba(34,30,23,0.35)]'
+   976→                : 'fill-transparent stroke-[#b7ad93]'
+   977→            }`}
+   978→            style={{ animationDelay: `${200 + i * 220}ms` }}
+   979→          />
+   980→        ))}
+   981→      </div>
+   982→      <h2 className="mt-2 text-3xl font-black tracking-wide text-[#221e17] sm:text-4xl">
+   983→        ДОМ СПАСЁН
+   984→      </h2>
+   985→      <p className="mx-auto mt-1 max-w-md text-[13px] leading-relaxed text-[#4b443a]">
+   986→        Все двадцать нарядов закрыты, щитки гудят от довольствия. Настоящий
+   987→        ЭнергоГерой бережёт свет и за пределами смены.
+   988→      </p>
+   989→
+   990→      <div className="mx-auto mt-4 max-w-sm text-left">
+   991→        <LedgerRow k="Всего очков" v={String(s.score)} />
+   992→        <LedgerRow
+   993→          k="Личный рекорд"
+   994→          v={`${s.best}${isRecord ? ' · новый!' : ''}`}
+   995→        />
+   996→        <LedgerRow
+   997→          k="LED-лампочки за забег"
+   998→          v={`${s.bulbs}/${s.bulbsTotal}`}
+   999→        />
+  1000→        <LedgerRow
+  1001→          k="Рубильники за забег"
+  1002→          v={`${s.switches}/${s.switchesTotal}`}
+  1003→        />
+  1004→      </div>
+  1005→
+  1006→      <div className="mt-4 flex flex-wrap justify-center gap-2">
+  1007→        <InkButton onClick={onRestart} size="lg">
+  1008→          <Play className="h-4 w-4" /> НОВАЯ СМЕНА
+  1009→        </InkButton>
+  1010→        <InkButton onClick={onLevels} tone="paper">
+  1011→          <Map className="h-4 w-4" /> ЖУРНАЛ НАРЯДОВ
+  1012→        </InkButton>
+  1013→        <InkButton onClick={onMenu} tone="ink">
+  1014→          <Home className="h-4 w-4" /> В УПРАВЛЕНИЕ
+  1015→        </InkButton>
+  1016→      </div>
+  1017→    </Doc>
+  1018→  )
+  1019→}
+  1020→
+  1021→function PauseDoc({
+  1022→  musicOn,
+  1023→  sfxOn,
+  1024→  onToggleMusic,
+  1025→  onToggleSfx,
+  1026→  onResume,
+  1027→  onRetry,
+  1028→  onMenu,
+  1029→}: {
+  1030→  musicOn: boolean
+  1031→  sfxOn: boolean
+  1032→  onToggleMusic: () => void
+  1033→  onToggleSfx: () => void
+  1034→  onResume: () => void
+  1035→  onRetry: () => void
+  1036→  onMenu: () => void
+  1037→}) {
+  1038→  return (
+  1039→    <Doc docNo="ЭГ-0" title="ПЕРЕРЫВ" tone="tape">
+  1040→      <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-[#8a8171]">
+  1041→        сеть под напряжением · свет подождёт
+  1042→      </p>
+  1043→      <div className="mx-auto mt-4 flex w-full max-w-xs flex-col gap-1.5">
+  1044→        <FormSwitch
+  1045→          label="Фоновая музыка"
+  1046→          on={musicOn}
+  1047→          onToggle={onToggleMusic}
+  1048→        />
+  1049→        <FormSwitch label="Звуковые эффекты" on={sfxOn} onToggle={onToggleSfx} />
+  1050→      </div>
+  1051→      <div className="mt-4 flex flex-wrap justify-center gap-2">
+  1052→        <InkButton onClick={onResume} size="lg">
+  1053→          <Play className="h-4 w-4" /> ПРОДОЛЖИТЬ
+  1054→        </InkButton>
+  1055→        <InkButton onClick={onRetry} tone="paper">
+  1056→          <RotateCcw className="h-4 w-4" /> ЗАНОВО
+  1057→        </InkButton>
+  1058→        <InkButton onClick={onMenu} tone="ink">
+  1059→          <Home className="h-4 w-4" /> В УПРАВЛЕНИЕ
+  1060→        </InkButton>
+  1061→      </div>
+  1062→    </Doc>
+  1063→  )
+  1064→}
+  1065→
+  1066→/* ------------------------------------------------------------------ */
+  1067→/* Элементы бланка                                                     */
+  1068→/* ------------------------------------------------------------------ */
+  1069→
+  1070→function Doc({
+  1071→  children,
+  1072→  title,
+  1073→  docNo,
+  1074→  tone = 'plain',
+  1075→}: {
+  1076→  children: React.ReactNode
+  1077→  title: string
+  1078→  docNo: string
+  1079→  tone?: 'plain' | 'tape' | 'tape-red'
+  1080→}) {
+  1081→  return (
+  1082→    <div className="ah-doc ah-pop mx-auto w-full text-center">
+  1083→      <div
+  1084→        className={`h-2.5 w-full ${tone === 'tape-red' ? 'ah-tape-red' : tone === 'tape' ? 'ah-tape' : 'bg-[#221e17]'}`}
+  1085→      />
+  1086→      <div className="px-5 py-4 sm:px-9 sm:py-5">
+  1087→        <div className="mb-2 flex items-baseline justify-between gap-2 border-b-2 border-[#221e17]/60 pb-1.5">
+  1088→          <span className="text-[13px] font-black uppercase tracking-[0.22em] text-[#221e17] sm:text-sm">
+  1089→            {title}
+  1090→          </span>
+  1091→          <span className="shrink-0 font-mono text-[10px] tracking-[0.18em] text-[#8a8171]">
+  1092→            № {docNo}
+  1093→          </span>
+  1094→        </div>
+  1095→        {children}
+  1096→      </div>
+  1097→    </div>
+  1098→  )
+  1099→}
+  1100→
+  1101→function FieldRow({ label, value }: { label: string; value: string }) {
+  1102→  return (
+  1103→    <div className="flex items-baseline text-[13px]">
+  1104→      <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#8a8171]">
+  1105→        {label}
+  1106→      </span>
+  1107→      <span className="ah-leader" />
+  1108→      <span className="font-bold text-[#221e17]">{value}</span>
+  1109→    </div>
+  1110→  )
+  1111→}
+  1112→
+  1113→function LedgerRow({ k, v }: { k: string; v: string }) {
+  1114→  return (
+  1115→    <div className="flex items-baseline py-[3px] text-[13.5px] text-[#221e17]">
+  1116→      <span className="font-bold">{k}</span>
+  1117→      <span className="ah-leader" />
+  1118→      <span className="font-mono text-[13px] font-bold">{v}</span>
+  1119→    </div>
+  1120→  )
+  1121→}
+  1122→
+  1123→function LevelDots({ current }: { current: number }) {
+  1124→  return (
+  1125→    <div className="mt-4 flex flex-wrap items-center justify-center gap-1">
+  1126→      {LEVELS.map((_, i) => (
+  1127→        <span
+  1128→          key={i}
+  1129→          title={`Наряд № ${i + 1}`}
+  1130→          className={`h-2 transition-all ${
+  1131→            i === current
+  1132→              ? 'ah-blink w-5 bg-[#c8402e]'
+  1133→              : i < current
+  1134→                ? 'w-2 bg-[#2e7d43]'
+  1135→                : 'w-2 border border-[#221e17]/40 bg-transparent'
+  1136→          }`}
+  1137→        />
+  1138→      ))}
+  1139→    </div>
+  1140→  )
+  1141→}
+  1142→
+  1143→const BTN_TONES = {
+  1144→  primary:
+  1145→    'bg-[#ffd23f] text-[#221e17] shadow-[0_4px_0_#221e17] hover:bg-[#ffdc61] active:shadow-[0_1px_0_#221e17]',
+  1146→  paper:
+  1147→    'bg-[#faf5e4] text-[#221e17] shadow-[0_4px_0_#221e17] hover:bg-white active:shadow-[0_1px_0_#221e17]',
+  1148→  ink: 'bg-[#221e17] text-[#f4eeda] shadow-[0_4px_0_#0c0a07] hover:bg-[#383228] active:shadow-[0_1px_0_#0c0a07]',
+  1149→  danger:
+  1150→    'bg-[#d3452f] text-[#f4eeda] shadow-[0_4px_0_#221e17] hover:bg-[#e05540] active:shadow-[0_1px_0_#221e17]',
+  1151→} as const
+  1152→
+  1153→function InkButton({
+  1154→  children,
+  1155→  onClick,
+  1156→  tone = 'primary',
+  1157→  size = 'md',
+  1158→  className = '',
+  1159→}: {
+  1160→  children: React.ReactNode
+  1161→  onClick: () => void
+  1162→  tone?: keyof typeof BTN_TONES
+  1163→  size?: 'md' | 'lg'
+  1164→  className?: string
+  1165→}) {
+  1166→  return (
+  1167→    <button
+  1168→      onClick={onClick}
+  1169→      className={`inline-flex select-none items-center justify-center gap-2 rounded-[3px] border-2 border-[#221e17] font-black uppercase tracking-[0.12em] transition-all duration-75 active:translate-y-[3px] ${
+  1170→        BTN_TONES[tone]
+  1171→      } ${size === 'lg' ? 'h-11 px-7 text-[15px]' : 'h-10 px-4 text-xs'} ${className}`}
+  1172→    >
+  1173→      {children}
+  1174→    </button>
+  1175→  )
+  1176→}
+  1177→
+  1178→function FormSwitch({
+  1179→  label,
+  1180→  on,
+  1181→  onToggle,
+  1182→}: {
+  1183→  label: string
+  1184→  on: boolean
+  1185→  onToggle: () => void
+  1186→}) {
+  1187→  return (
+  1188→    <button
+  1189→      onClick={onToggle}
+  1190→      role="switch"
+  1191→      aria-checked={on}
+  1192→      className="flex items-center justify-between border-2 border-[#221e17]/25 bg-[#faf5e4] px-3 py-2 text-left transition-colors hover:border-[#221e17]/50"
+  1193→    >
+  1194→      <span className="text-[12px] font-black uppercase tracking-[0.14em] text-[#221e17]">
+  1195→        {label}
+  1196→      </span>
+  1197→      <span
+  1198→        className={`relative ml-3 h-5 w-10 shrink-0 border-2 border-[#221e17] transition-colors ${
+  1199→          on ? 'bg-[#ffd23f]' : 'ah-hatch bg-[#efe7cd]'
+  1200→        }`}
+  1201→      >
+  1202→        <span
+  1203→          className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 border-2 border-[#221e17] bg-[#faf5e4] transition-all ${
+  1204→            on ? 'left-[calc(100%-1.1rem)]' : 'left-0.5'
+  1205→          }`}
+  1206→        />
+  1207→      </span>
+  1208→    </button>
+  1209→  )
+  1210→}
+  1211→
+  1212→function ScoreCount({ value }: { value: number }) {
+  1213→  const [v, setV] = useState(0)
+  1214→  useEffect(() => {
+  1215→    let raf = 0
+  1216→    const t0 = performance.now()
+  1217→    const dur = 700
+  1218→    const tick = (t: number) => {
+  1219→      const k = Math.min(1, (t - t0) / dur)
+  1220→      setV(Math.round(value * (1 - Math.pow(1 - k, 3))))
+  1221→      if (k < 1) raf = requestAnimationFrame(tick)
+  1222→    }
+  1223→    raf = requestAnimationFrame(tick)
+  1224→    return () => cancelAnimationFrame(raf)
+  1225→  }, [value])
+  1226→  return <>{v}</>
+  1227→}
+  1228→
+  1229→function CanvasIconBtn({
+  1230→  children,
+  1231→  label,
+  1232→  on,
+  1233→  onClick,
+  1234→}: {
+  1235→  children: React.ReactNode
+  1236→  label: string
+  1237→  on: boolean
+  1238→  onClick: () => void
+  1239→}) {
+  1240→  return (
+  1241→    <button
+  1242→      onClick={onClick}
+  1243→      aria-label={label}
+  1244→      title={label}
+  1245→      className={`flex h-9 w-9 items-center justify-center border border-[#efe7d2]/25 bg-black/50 backdrop-blur-sm transition ${
+  1246→        on
+  1247→          ? 'text-[#ffd23f] hover:bg-black/70'
+  1248→          : 'text-[#efe7d2]/40 hover:bg-black/70'
+  1249→      }`}
+  1250→    >
+  1251→      {children}
+  1252→    </button>
+  1253→  )
+  1254→}
+  1255→
+  1256→function TouchBtn({
+  1257→  label,
+  1258→  wide,
+  1259→  ...handlers
+  1260→}: {
+  1261→  label: string
+  1262→  wide?: boolean
+  1263→} & React.ComponentProps<'button'>) {
+  1264→  return (
+  1265→    <button
+  1266→      {...handlers}
+  1267→      className={`touch-none select-none rounded-[4px] border-2 border-[#efe7d2]/30 bg-black/55 font-black uppercase tracking-widest text-[#efe7d2] shadow-[0_4px_0_rgba(0,0,0,0.5)] active:translate-y-[2px] active:bg-[#ffd23f]/90 active:text-[#221e17] ${
+  1268→        wide ? 'h-16 px-10 text-lg' : 'h-16 w-20 text-2xl'
+  1269→      }`}
+  1270→    >
+  1271→      {label}
+  1272→    </button>
+  1273→  )
+  1274→}
+  1275→

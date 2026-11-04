@@ -15,16 +15,25 @@ import {
   Play,
   Plug,
   RotateCcw,
+  Scroll,
   Star,
   ToggleLeft,
   TriangleAlert,
   Volume2,
   VolumeX,
 } from 'lucide-react'
+import { Cutscene } from '@/components/game/Cutscene'
 import { EnergoGame, VIEW_H, VIEW_W } from '@/lib/game/engine'
 import { LEVELS } from '@/lib/game/levels'
 import type { ThemeName } from '@/lib/game/levels'
 import { Music } from '@/lib/game/music'
+import {
+  CHAPTER_AT,
+  STORY,
+  STORY_ORDER,
+  loadSeenScenes,
+  saveSeenScenes,
+} from '@/lib/game/story'
 import type { LevelResult, Phase, RunSummary, Snapshot } from '@/lib/game/types'
 
 /* ------------------------------------------------------------------ */
@@ -217,7 +226,41 @@ export default function EnergoHeroGame() {
   const [isTouch, setIsTouch] = useState(false)
   const [best, setBest] = useState(0)
   const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS)
-  const [menuView, setMenuView] = useState<'main' | 'levels' | 'howto'>('main')
+  const [menuView, setMenuView] = useState<
+    'main' | 'levels' | 'howto' | 'story'
+  >('main')
+  // ---------- Сюжет: катсцены ----------
+  const [cutscene, setCutscene] = useState<(typeof STORY)[string] | null>(null)
+  const [seenScenes, setSeenScenes] = useState<Set<string>>(new Set())
+  const seenRef = useRef<Set<string>>(new Set())
+  const afterSceneRef = useRef<(() => void) | null>(null)
+
+  /** Показать главу хроники; повторно — только по запросу (force). */
+  const playScene = useCallback(
+    (id: string, after: () => void, force = false) => {
+      if (!STORY[id]) {
+        after()
+        return
+      }
+      if (!force && seenRef.current.has(id)) {
+        after()
+        return
+      }
+      seenRef.current.add(id)
+      saveSeenScenes(seenRef.current)
+      setSeenScenes(new Set(seenRef.current))
+      afterSceneRef.current = after
+      setCutscene(STORY[id])
+    },
+    [],
+  )
+
+  const finishCutscene = useCallback(() => {
+    const after = afterSceneRef.current
+    afterSceneRef.current = null
+    setCutscene(null)
+    after?.()
+  }, [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -288,6 +331,9 @@ export default function EnergoHeroGame() {
       setProgress(loadProgress())
       setMusicOn(mOn)
       setSfxOn(sOn)
+      const seen = loadSeenScenes()
+      seenRef.current = seen
+      setSeenScenes(new Set(seen))
       try {
         setBest(Number(localStorage.getItem('energohero-best') ?? '0') || 0)
       } catch {
@@ -353,21 +399,49 @@ export default function EnergoHeroGame() {
     [],
   )
 
-  // Enter — основное действие на оверлеях
+  /** «Следующий наряд» с проверкой: не начинается ли новая глава. */
+  const nextWithStory = useCallback(() => {
+    const g = gameRef.current
+    if (!g) return
+    const nextIdx = (snap?.levelIndex ?? 0) + 1
+    const chapter = nextIdx >= LEVELS.length ? 'epilogue' : CHAPTER_AT[nextIdx]
+    if (chapter) playScene(chapter, () => act('next'))
+    else act('next')
+  }, [snap, act, playScene])
+
+  /** Загрузка уровня с карты с проверкой: не открывает ли он главу. */
+  const pickWithStory = useCallback(
+    (i: number) => {
+      const g = gameRef.current
+      if (!g) return
+      const chapter = CHAPTER_AT[i]
+      if (chapter) playScene(chapter, () => act({ select: i }))
+      else act({ select: i })
+    },
+    [act, playScene],
+  )
+
+  /** Новая смена: всегда с пролога (кнопка пропуска в кадре есть). */
+  const startFresh = useCallback(() => {
+    playScene('prologue', () => act('start'), true)
+  }, [playScene, act])
+
+  // Enter — основное действие на оверлеях (когда не открыта катсцена)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Enter' && e.code !== 'NumpadEnter' && e.key !== 'Enter')
         return
-      if (phase === 'menu') act('start')
+      if (cutscene) return // катсцена сама слушает Enter
+      if (phase === 'menu') startFresh()
       else if (phase === 'intro') act('begin')
-      else if (phase === 'complete') act('next')
+      else if (phase === 'complete') nextWithStory()
       else if (phase === 'gameover') act('retry')
-      else if (phase === 'victory') act('start')
+      else if (phase === 'victory') startFresh()
       else if (phase === 'paused') act('pause')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [phase, act])
+  }, [phase, act, cutscene, startFresh, nextWithStory])
 
   const hold = useCallback(
     (k: 'left' | 'right' | 'jump') => ({
@@ -459,9 +533,10 @@ export default function EnergoHeroGame() {
                   best={best}
                   unlocked={progress.unlocked}
                   onContinue={() => act({ select: progress.unlocked - 1 })}
-                  onFresh={() => act('start')}
+                  onFresh={startFresh}
                   onLevels={() => setMenuView('levels')}
                   onHowto={() => setMenuView('howto')}
+                  onStory={() => setMenuView('story')}
                 />
               )}
               {menuView === 'levels' && (
@@ -469,13 +544,23 @@ export default function EnergoHeroGame() {
                   progress={progress}
                   onPick={(i) => {
                     setMenuView('main')
-                    act({ select: i })
+                    pickWithStory(i)
                   }}
                   onClose={() => setMenuView('main')}
                 />
               )}
               {menuView === 'howto' && (
                 <MenuHowto onClose={() => setMenuView('main')} />
+              )}
+              {menuView === 'story' && (
+                <MenuStory
+                  seen={seenScenes}
+                  onPlay={(id) => {
+                    setMenuView('main')
+                    playScene(id, () => undefined, true)
+                  }}
+                  onClose={() => setMenuView('main')}
+                />
               )}
             </Overlay>
           )}
@@ -504,7 +589,7 @@ export default function EnergoHeroGame() {
             <Overlay>
               <CompleteDoc
                 snap={snap}
-                onNext={() => act('next')}
+                onNext={nextWithStory}
                 onRetry={() => act('retry')}
                 onMenu={() => act('menu')}
               />
@@ -526,7 +611,7 @@ export default function EnergoHeroGame() {
               <VictoryDoc
                 snap={snap}
                 best={best}
-                onRestart={() => act('start')}
+                onRestart={startFresh}
                 onLevels={() => {
                   setMenuView('levels')
                   act('menu')
@@ -535,6 +620,9 @@ export default function EnergoHeroGame() {
               />
             </Overlay>
           )}
+
+          {/* ---------- Катсцена-хроника (поверх всего) ---------- */}
+          {cutscene && <Cutscene scene={cutscene} onFinish={finishCutscene} />}
         </div>
 
         {/* ---------- Сенсорное управление ---------- */}
@@ -579,6 +667,7 @@ function MenuMain({
   onFresh,
   onLevels,
   onHowto,
+  onStory,
 }: {
   best: number
   unlocked: number
@@ -586,6 +675,7 @@ function MenuMain({
   onFresh: () => void
   onLevels: () => void
   onHowto: () => void
+  onStory: () => void
 }) {
   return (
     <Doc docNo="ЭГ-7" title="УПРАВЛЕНИЕ НАРЯДАМИ" tone="tape">
@@ -626,6 +716,9 @@ function MenuMain({
             <BookOpenCheck className="h-4 w-4" /> ПАМЯТКА
           </InkButton>
         </div>
+        <InkButton onClick={onStory} tone="ink" className="w-full">
+          <Scroll className="h-4 w-4" /> ХРОНИКА СМЕНЫ
+        </InkButton>
       </div>
 
       <div className="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[#6b6455]">
@@ -706,6 +799,66 @@ function MenuLevels({
       <div className="mt-4">
         <InkButton onClick={onClose} tone="ink">
           ЗАКРЫТЬ ЖУРНАЛ
+        </InkButton>
+      </div>
+    </Doc>
+  )
+}
+
+function MenuStory({
+  seen,
+  onPlay,
+  onClose,
+}: {
+  seen: Set<string>
+  onPlay: (id: string) => void
+  onClose: () => void
+}) {
+  return (
+    <Doc docNo="ЭГ-ХР" title="ХРОНИКА СМЕНЫ" tone="tape">
+      <p className="mx-auto max-w-md text-xs leading-relaxed text-[#4b443a]">
+        Как прошло расследование дома № 7 — по кадрам. Пролог открывается
+        первой сменой, главы — по ходу нарядов.
+      </p>
+      <div className="mx-auto mt-4 flex max-w-md flex-col gap-1.5">
+        {STORY_ORDER.map((id, i) => {
+          const sc = STORY[id]
+          const isSeen = seen.has(id)
+          return (
+            <div
+              key={id}
+              className="ah-pop flex items-center gap-2.5 border-2 border-[#221e17]/20 bg-[#faf5e4] p-2 text-left"
+              style={{ animationDelay: `${i * 45}ms` }}
+            >
+              <span className="flex h-9 w-11 shrink-0 items-center justify-center border-2 border-[#221e17] bg-[#221e17] font-mono text-[9px] font-black tracking-widest text-[#ffd23f]">
+                {sc.docNo}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12.5px] font-black uppercase tracking-wide text-[#221e17]">
+                  {sc.chapter} · «{sc.title}»
+                </span>
+                <span className="mt-0.5 block font-mono text-[9px] uppercase tracking-[0.22em] text-[#8a8171]">
+                  {isSeen ? 'в архиве' : 'не просмотрено'} · {sc.span} · кадров: {sc.panels.length}
+                </span>
+              </span>
+              {!isSeen && (
+                <span className="ah-stamp shrink-0 border-2 border-[#c8402e] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-[#c8402e]">
+                  Новое
+                </span>
+              )}
+              <button
+                onClick={() => onPlay(id)}
+                className="inline-flex h-8 shrink-0 select-none items-center gap-1 rounded-[3px] border-2 border-[#221e17] bg-[#ffd23f] px-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#221e17] shadow-[0_3px_0_#221e17] transition-all hover:bg-[#ffdc61] active:translate-y-[2px] active:shadow-[0_1px_0_#221e17]"
+              >
+                <Play className="h-3 w-3" /> КАДР
+              </button>
+            </div>
+          )
+        })}
+      </div>
+      <div className="mt-4">
+        <InkButton onClick={onClose} tone="ink">
+          ЗАКРЫТЬ ХРОНИКУ
         </InkButton>
       </div>
     </Doc>
