@@ -115,7 +115,7 @@ const DISTRICT: Record<ThemeName, string> = {
   basement: 'Подвальный ярус',
   living: 'Гостиная зона',
   attic: 'Чердачный пролёт',
-  office: 'Офисный блок',
+  office: 'Домашний кабинет',
 }
 
 /** Причина аварии → строка акта и совет. */
