@@ -306,8 +306,12 @@ export default function EnergoHeroGame() {
           music.setDuck(1)
         } else if (s.phase === 'paused' || s.phase === 'complete') {
           music.setDuck(0.3)
-        } else if (s.phase === 'gameover' || s.phase === 'victory') {
+        } else if (s.phase === 'gameover') {
           music.stop()
+        } else if (s.phase === 'victory') {
+          // Финал: тема возвращается победным маршем под салют
+          if (music.enabled) music.start()
+          music.setDuck(0.5)
         }
         if (s.phase === 'complete' && s.result) {
           saveLevelProgress(s.levelIndex, s.result)
@@ -323,6 +327,8 @@ export default function EnergoHeroGame() {
           } catch {
             /* ignore */
           }
+          // Финал: эпилог хроники поверх отчёта — всегда, это конец игры
+          playScene('epilogue', () => {}, true)
         }
       },
     })
@@ -370,7 +376,7 @@ export default function EnergoHeroGame() {
       gameRef.current = null
       musicRef.current = null
     }
-  }, [])
+  }, [playScene])
 
   const act = useCallback(
     (
@@ -632,7 +638,7 @@ export default function EnergoHeroGame() {
           )}
 
           {phase === 'victory' && snap?.summary && (
-            <Overlay>
+            <Overlay dim={0.42}>
               <VictoryDoc
                 snap={snap}
                 best={best}
@@ -677,9 +683,22 @@ export default function EnergoHeroGame() {
 /* Экраны                                                              */
 /* ------------------------------------------------------------------ */
 
-function Overlay({ children }: { children: React.ReactNode }) {
+function Overlay({
+  children,
+  dim = 0.78,
+}: {
+  children: React.ReactNode
+  /** Плотность затемнения: на финале светлей — салют виден сквозь. */
+  dim?: number
+}) {
+  const hex = Math.round(dim * 255)
+    .toString(16)
+    .padStart(2, '0')
   return (
-    <div className="absolute inset-0 z-10 flex overflow-y-auto bg-[#070a08]/78 p-3 backdrop-blur-[2.5px]">
+    <div
+      className="absolute inset-0 z-10 flex overflow-y-auto p-3 backdrop-blur-[2.5px]"
+      style={{ backgroundColor: `#070a08${hex}` }}
+    >
       <div className="m-auto w-full max-w-2xl py-2 text-center">{children}</div>
     </div>
   )
@@ -1144,6 +1163,15 @@ function VictoryDoc({
   const isRecord = s.score > 0 && s.score >= best
   return (
     <Doc docNo="ЭГ-20/ИТГ" title="ОТЧЁТ ПО ОБЪЕКТУ · ЗАКРЫТ" tone="tape">
+      {/* Штамп «КОНЕЦ» — финальный оттиск хроники */}
+      <div className="relative mb-1 flex justify-center">
+        <div
+          className="ah-stamp select-none px-5 py-1 text-center text-xl font-black uppercase tracking-[0.3em] sm:text-2xl"
+          aria-hidden
+        >
+          ★ Конец ★
+        </div>
+      </div>
       <div className="flex justify-center gap-2">
         {[0, 1, 2].map((i) => (
           <Star
@@ -1179,6 +1207,19 @@ function VictoryDoc({
           k="Рубильники за забег"
           v={`${s.switches}/${s.switchesTotal}`}
         />
+      </div>
+
+      {/* Титры: вся команда ночной смены */}
+      <div className="mx-auto mt-4 max-w-md border-t-2 border-dashed border-[#221e17]/30 pt-3">
+        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-[#8a8171]">
+          в смене участвовали
+        </p>
+        <p className="mt-1.5 text-[12px] leading-relaxed text-[#4b443a]">
+          <b className="text-[#221e17]">Вжик</b> — холодная нить и лёгкий плащ ·{' '}
+          <b className="text-[#221e17]">Барон Накал</b> — пятьдесят ватт по
+          вечерам · <b className="text-[#221e17]">Диспетчер</b> — голос с крыши ·
+          энергоВампирики — покаянный хор
+        </p>
       </div>
 
       <div className="mt-4 flex flex-wrap justify-center gap-2">

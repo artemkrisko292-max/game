@@ -44,16 +44,16 @@ const STEP = 1 / 60
 const EPS = 0.01
 
 const ENERGY_MAX = 100
-const DRAIN_BASE = 1.0 // расход энергии в секунду
-const DRAIN_LAMP = 2.4 // в секунду внутри конуса света
+const DRAIN_BASE = 1.5 // расход энергии в секунду — батареи хватит ненадолго
+const DRAIN_LAMP = 4.8 // в секунду внутри конуса света — очень жарко
 const LAMP_CONE_LEN = 420
-const DMG_VAMPIRE = 18
-const DMG_PHANTOM = 12
-const DMG_SOCKET = 15
-const DMG_SPIKES = 14
-const DMG_RUNNER = 22
-const DMG_DRONE = 15
-const DMG_FALL = 12
+const DMG_VAMPIRE = 24
+const DMG_PHANTOM = 16
+const DMG_SOCKET = 20
+const DMG_SPIKES = 19
+const DMG_RUNNER = 30
+const DMG_DRONE = 20
+const DMG_FALL = 16
 const HEAL_BULB = 8
 const SCORE_RUNNER = 150
 const SCORE_DRONE = 120
@@ -286,6 +286,12 @@ export class EnergoGame {
       stars,
     }
     this.setPhase('victory')
+    // Смена закрыта: сразу три торжественных залпа над сценой
+    const cy = this.camY
+    const cx = this.camX
+    this.firework(cx + VIEW_W * 0.3, cy + 120)
+    this.firework(cx + VIEW_W * 0.5, cy + 80)
+    this.firework(cx + VIEW_W * 0.7, cy + 150)
   }
 
   // ---------- Загрузка уровня ----------
@@ -634,8 +640,57 @@ export class EnergoGame {
         steps++
       }
       if (steps === 4) this.acc = 0
+    } else if (this.phase === 'victory') {
+      // Финальный салют: сцена живёт под отчётом
+      this.celebrate()
     }
     render(this.ctx, this)
+  }
+
+  /** Праздничный такт: заряды салюта, полёт частиц, лёгкая дрожь камеры. */
+  private celebrate() {
+    this.frame++
+    if (this.shake > 0) this.shake *= 0.85
+    if (this.frame % 30 === 0) {
+      const fx =
+        this.camX + 70 + Math.random() * (VIEW_W - 140)
+      const fy =
+        this.camY + 50 + Math.random() * (VIEW_H * 0.5)
+      this.firework(fx, fy)
+    }
+    this.updateParticles()
+  }
+
+  /** Один залп: венок цветных искр с мягким хлопком. */
+  private firework(x: number, y: number) {
+    const palette = [
+      '#ffd94d',
+      '#ff8a3d',
+      '#a4f04a',
+      '#7ec8ff',
+      '#ff6b9d',
+      '#fff3b0',
+    ]
+    const col = palette[Math.floor(Math.random() * palette.length)]
+    this.shake = 1.6
+    this.sfx.pop()
+    for (let i = 0; i < 26; i++) {
+      const a = (i / 26) * Math.PI * 2 + Math.random() * 0.22
+      const sp = 2.1 + Math.random() * 2.3
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 34 + Math.random() * 22,
+        maxLife: 56,
+        size: 2 + Math.random() * 2.6,
+        color: Math.random() < 0.75 ? col : '#fff8dc',
+        kind: 'star',
+        grav: 0.055,
+      })
+    }
+    if (this.particles.length > 320) this.particles.splice(0, 110)
   }
 
   // ---------- Шаг симуляции ----------
@@ -1128,7 +1183,7 @@ export class EnergoGame {
 
   private updateEnergy() {
     // Сложность растёт с номером уровня: энергия тает всё быстрее
-    const mul = 1 + this.levelIndex * 0.05
+    const mul = 1 + this.levelIndex * 0.06
     this.energy -=
       (DRAIN_BASE * mul + this.lampDrain() * (0.8 + mul * 0.2)) * STEP
     if (this.energy <= 0) {

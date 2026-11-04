@@ -113,6 +113,10 @@ export class Sfx {
     this.tone(180, 45, 0.3, 'sawtooth', 0.11)
     this.tone(90, 40, 0.22, 'square', 0.07, 0.05)
   }
+  /** Хлопок салюта: короткий мягкий «поп». */
+  pop() {
+    this.tone(520, 160, 0.09, 'triangle', 0.05)
+  }
   lose() {
     const notes = [320, 230, 150, 95]
     notes.forEach((f, i) =>

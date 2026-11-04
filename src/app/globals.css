@@ -155,6 +155,14 @@
   }
 }
 .ah-stamp {
+  /* Оттиск резинового штампа: красные чернила, двойная рамка, лёгкий наклон */
+  color: #c8402e;
+  border: 3px solid #c8402e;
+  border-radius: 10px;
+  box-shadow:
+    inset 0 0 0 1.5px rgba(200, 64, 46, 0.4),
+    0 2px 0 rgba(34, 30, 23, 0.12);
+  text-shadow: 0 0 1px rgba(200, 64, 46, 0.45);
   animation: ah-stamp 0.5s cubic-bezier(0.2, 1.2, 0.4, 1) both;
 }
 
