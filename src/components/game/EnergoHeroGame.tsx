@@ -223,6 +223,10 @@ export default function EnergoHeroGame() {
   const [snap, setSnap] = useState<Snapshot | null>(null)
   const [musicOn, setMusicOn] = useState(true)
   const [sfxOn, setSfxOn] = useState(true)
+  // Зеркала состояния для обработчиков — клики всегда применяют
+  // актуальное значение, даже если React-состояние ещё не подъехало.
+  const musicOnRef = useRef(true)
+  const sfxOnRef = useRef(true)
   const [isTouch, setIsTouch] = useState(false)
   const [best, setBest] = useState(0)
   const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS)
@@ -275,6 +279,8 @@ export default function EnergoHeroGame() {
     const music = new Music()
     musicRef.current = music
 
+    // Настройки звука читаем синхронно — иконки и реальное состояние
+    // совпадают с первого кадра, без окна рассинхрона.
     let mOn = true
     let sOn = true
     try {
@@ -284,6 +290,10 @@ export default function EnergoHeroGame() {
       /* ignore */
     }
     music.enabled = mOn
+    // Рефы синхронно: логика toggles верна с первого же клика.
+    // Состояние иконок подтянем в rAF-коллбэке (см. ниже).
+    musicOnRef.current = mOn
+    sfxOnRef.current = sOn
 
     const game = new EnergoGame(canvas, {
       onPhase: (s) => {
@@ -318,8 +328,9 @@ export default function EnergoHeroGame() {
     })
     game.sfx.muted = !sOn
     gameRef.current = game
-    // Отладочный хук (используется автотестами: __energo.loadLevel(n))
+    // Отладочные хуки (используются автотестами)
     ;(window as unknown as { __energo?: EnergoGame }).__energo = game
+    ;(window as unknown as { __energoMusic?: Music }).__energoMusic = music
 
     // Отложенная инициализация некритичного UI-состояния
     const raf = requestAnimationFrame(() => {
@@ -329,8 +340,8 @@ export default function EnergoHeroGame() {
           window.innerWidth < 768,
       )
       setProgress(loadProgress())
-      setMusicOn(mOn)
-      setSfxOn(sOn)
+      setMusicOn(musicOnRef.current)
+      setSfxOn(sfxOnRef.current)
       const seen = loadSeenScenes()
       seenRef.current = seen
       setSeenScenes(new Set(seen))
@@ -341,8 +352,10 @@ export default function EnergoHeroGame() {
       }
     })
 
-    // Музыка стартует после первого жеста пользователя (политика автоплея)
+    // Музыка стартует после первого жеста пользователя (политика автоплея).
+    // wake() продублирован внутри Music — там же самолечение suspended.
     const kick = () => {
+      music.wake()
       if (music.enabled) music.start()
     }
     window.addEventListener('pointerdown', kick, { once: true })
@@ -352,9 +365,10 @@ export default function EnergoHeroGame() {
       cancelAnimationFrame(raf)
       window.removeEventListener('pointerdown', kick)
       window.removeEventListener('keydown', kick)
-      music.stop()
+      music.destroy()
       game.destroy()
       gameRef.current = null
+      musicRef.current = null
     }
   }, [])
 
@@ -456,30 +470,30 @@ export default function EnergoHeroGame() {
     [],
   )
 
+  /** Музыка: применяем значение сразу, побочные эффекты — вне setState. */
   const toggleMusic = useCallback(() => {
-    setMusicOn((v) => {
-      const nv = !v
-      musicRef.current?.setEnabled(nv)
-      try {
-        localStorage.setItem(PREF_MUSIC, nv ? 'on' : 'off')
-      } catch {
-        /* ignore */
-      }
-      return nv
-    })
+    const nv = !musicOnRef.current
+    musicOnRef.current = nv
+    setMusicOn(nv)
+    musicRef.current?.setEnabled(nv)
+    try {
+      localStorage.setItem(PREF_MUSIC, nv ? 'on' : 'off')
+    } catch {
+      /* ignore */
+    }
   }, [])
 
+  /** Эффекты: глушим мгновенно, без хвостов. */
   const toggleSfx = useCallback(() => {
-    setSfxOn((v) => {
-      const nv = !v
-      if (gameRef.current) gameRef.current.sfx.muted = !nv
-      try {
-        localStorage.setItem(PREF_SFX, nv ? 'on' : 'off')
-      } catch {
-        /* ignore */
-      }
-      return nv
-    })
+    const nv = !sfxOnRef.current
+    sfxOnRef.current = nv
+    setSfxOn(nv)
+    if (gameRef.current) gameRef.current.sfx.muted = !nv
+    try {
+      localStorage.setItem(PREF_SFX, nv ? 'on' : 'off')
+    } catch {
+      /* ignore */
+    }
   }, [])
 
   const playing = phase === 'playing' || phase === 'paused'
@@ -502,6 +516,12 @@ export default function EnergoHeroGame() {
               onClick={toggleMusic}
             >
               <Music2 className="h-4 w-4" />
+              {!musicOn && (
+                <span
+                  aria-hidden
+                  className="absolute h-[2px] w-6 -rotate-45 rounded bg-[#c8402e]"
+                />
+              )}
             </CanvasIconBtn>
             <CanvasIconBtn
               label={sfxOn ? 'Выключить звук' : 'Включить звук'}
@@ -1392,13 +1412,15 @@ function CanvasIconBtn({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       aria-label={label}
+      aria-pressed={on}
       title={label}
-      className={`flex h-9 w-9 items-center justify-center border border-[#efe7d2]/25 bg-black/50 backdrop-blur-sm transition ${
+      className={`relative flex h-9 w-9 items-center justify-center border bg-black/55 backdrop-blur-sm transition ${
         on
-          ? 'text-[#ffd23f] hover:bg-black/70'
-          : 'text-[#efe7d2]/40 hover:bg-black/70'
+          ? 'border-[#ffd23f]/60 text-[#ffd23f] hover:bg-black/75'
+          : 'border-[#efe7d2]/20 text-[#efe7d2]/45 hover:bg-black/75'
       }`}
     >
       {children}

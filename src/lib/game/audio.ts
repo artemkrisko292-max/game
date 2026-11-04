@@ -1,8 +1,28 @@
 // Простые звуковые эффекты на Web Audio API (без внешних файлов).
+// Все тоны идут через общий мастер-гейн: переключение «звук выкл»
+// глушит даже уже запланированные ноты — мгновенно и без хвостов.
 
 export class Sfx {
   private ctx: AudioContext | null = null
-  muted = false
+  private master: GainNode | null = null
+  private mutedFlag = false
+
+  get muted() {
+    return this.mutedFlag
+  }
+
+  set muted(v: boolean) {
+    this.mutedFlag = v
+    if (this.ctx && this.master) {
+      const now = this.ctx.currentTime
+      this.master.gain.cancelScheduledValues(now)
+      this.master.gain.setValueAtTime(
+        Math.max(0.0001, this.master.gain.value),
+        now,
+      )
+      this.master.gain.linearRampToValueAtTime(v ? 0.0001 : 1, now + 0.04)
+    }
+  }
 
   ensure() {
     if (typeof window === 'undefined') return
@@ -13,6 +33,9 @@ export class Sfx {
           .webkitAudioContext
       if (!AC) return
       this.ctx = new AC()
+      this.master = this.ctx.createGain()
+      this.master.gain.value = this.mutedFlag ? 0.0001 : 1
+      this.master.connect(this.ctx.destination)
     }
     if (this.ctx.state === 'suspended') {
       void this.ctx.resume()
@@ -27,7 +50,12 @@ export class Sfx {
     vol = 0.12,
     delay = 0,
   ) {
-    if (this.muted || !this.ctx) return
+    if (this.mutedFlag || !this.ctx || !this.master) return
+    // Контекст ещё не разбужен жестом: не копим «залп» устаревших нот.
+    if (this.ctx.state !== 'running') {
+      void this.ctx.resume()
+      return
+    }
     const ctx = this.ctx
     const t0 = ctx.currentTime + delay
     const osc = ctx.createOscillator()
@@ -41,7 +69,7 @@ export class Sfx {
     gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.012)
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
     osc.connect(gain)
-    gain.connect(ctx.destination)
+    gain.connect(this.master)
     osc.start(t0)
     osc.stop(t0 + dur + 0.05)
   }
