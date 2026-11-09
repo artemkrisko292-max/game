@@ -250,8 +250,23 @@ function verify(idx) {
   ]
   for (const it of items)
     if (!reachableEntities.has(it.id)) issues.push('  ✗ НЕДОСТИЖИМО: ' + it.label)
+  // Энергетическая проходимость: бюджет (старт + лампочки) должен запасать
+  // минимум 2.5 длины уровня. Константы синхронизированы с engine.ts.
+  const ENERGY_MAX = 100
+  const DRAIN_BASE = 2.8
+  const RAMP = 0.04
+  const HEAL_BULB = 12
+  const cols = Math.max(...def.map.map((r) => r.length))
+  const bulbs = def.map.reduce((n, row) => n + (row.match(/B/g) ?? []).length, 0)
+  const minTime = cols * TILE / (MOVE_MAX * 60)
+  const budget = (ENERGY_MAX + bulbs * HEAL_BULB) / (DRAIN_BASE * (1 + idx * RAMP))
+  const ratio = budget / minTime
+  if (ratio < 2.5)
+    issues.push(
+      `  ✗ МАЛО ЭНЕРГИИ: бюджет ${budget.toFixed(0)}с против мин. ${minTime.toFixed(0)}с бега (x${ratio.toFixed(1)}, нужно ≥ 2.5)`,
+    )
   console.log(`\n=== Уровень ${idx + 1}: ${def.name} ===`)
-  console.log(`Поверхностей: ${surf.length}, достижимо: ${visited.size}`)
+  console.log(`Поверхностей: ${surf.length}, достижимо: ${visited.size}, запас энергии: x${ratio.toFixed(1)}`)
   console.log(issues.length ? issues.join('\n') : '  ✓ все объекты достижимы')
   return issues.length === 0
 }
