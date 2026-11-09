@@ -237,20 +237,24 @@ export default function EnergoHeroGame() {
   const [cutscene, setCutscene] = useState<(typeof STORY)[string] | null>(null)
   const [seenScenes, setSeenScenes] = useState<Set<string>>(new Set())
   const seenRef = useRef<Set<string>>(new Set())
+  // Главы, показанные в ТЕКУЩЕЙ смене: глушат повтор только до конца забега,
+  // а не навсегда (иначе после первой смены сюжет молча пропадает).
+  const runSeenRef = useRef<Set<string>>(new Set())
   const afterSceneRef = useRef<(() => void) | null>(null)
 
-  /** Показать главу хроники; повторно — только по запросу (force). */
+  /** Показать главу хроники; повторно в рамках смены — только по запросу (force). */
   const playScene = useCallback(
     (id: string, after: () => void, force = false) => {
       if (!STORY[id]) {
         after()
         return
       }
-      if (!force && seenRef.current.has(id)) {
+      if (!force && runSeenRef.current.has(id)) {
         after()
         return
       }
-      seenRef.current.add(id)
+      runSeenRef.current.add(id)
+      seenRef.current.add(id) // в хронике глава остаётся найденной навсегда
       saveSeenScenes(seenRef.current)
       setSeenScenes(new Set(seenRef.current))
       afterSceneRef.current = after
@@ -441,8 +445,9 @@ export default function EnergoHeroGame() {
     [act, playScene],
   )
 
-  /** Новая смена: всегда с пролога (кнопка пропуска в кадре есть). */
+  /** Новая смена: главы хроники показываются заново. */
   const startFresh = useCallback(() => {
+    runSeenRef.current = new Set()
     playScene('prologue', () => act('start'), true)
   }, [playScene, act])
 
