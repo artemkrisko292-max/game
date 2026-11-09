@@ -115,8 +115,9 @@ export function render(ctx: CanvasRenderingContext2D, g: EnergoGame) {
 
 /**
  * Дымка глубины: заливка видимой области полупрозрачным цветом комнаты.
- * Идёт ПОСЛЕ фона и интерьера, но ДО геометрии — тыл сцены становится
- * тусклее и «дальше», а игровые объекты выделяются контрастом.
+ * Идёт ПОСЛЕ фона и интерьера, но ДО геометрии — тыл сцены (фон + вся
+ * мебель) заметно тонет в цвете комнаты и уходит в тень, а геометрия,
+ * герой и объекты поверх остаются яркими: иерархия планов читается сразу.
  */
 function drawDepthWash(
   ctx: CanvasRenderingContext2D,
@@ -124,9 +125,9 @@ function drawDepthWash(
   th: Theme,
 ) {
   ctx.fillStyle = th.skyTop
-  ctx.globalAlpha = 0.32
+  ctx.globalAlpha = 0.5
   ctx.fillRect(g.camX - 4, g.camY - 4, VIEW_W + 8, VIEW_H + 8)
-  ctx.fillStyle = 'rgba(8,6,14,0.17)'
+  ctx.fillStyle = 'rgba(8,6,14,0.3)'
   ctx.fillRect(g.camX - 4, g.camY - 4, VIEW_W + 8, VIEW_H + 8)
   ctx.globalAlpha = 1
 }
@@ -2222,16 +2223,17 @@ function drawDecor(ctx: CanvasRenderingContext2D, g: EnergoGame) {
       if (!ok) continue
 
       dctx.save()
-      dctx.globalAlpha = 0.88
+      dctx.globalAlpha = 0.8
       piece.draw(dctx, x, r * TILE, g.frame)
       dctx.restore()
     }
   }
 
-  // Композит на сцену: интерьер сильно приглушён, размыт и уходит в тень —
-  // читается силуэтом на заднем плане и не спорит с игрой
+  // Композит на сцену: интерьер сильно обесцвечен, притемнён и размыт —
+  // это самый дальний план комнаты: читается силуэтом и всегда тусклее
+  // любого игрового объекта на сцене
   ctx.save()
-  ctx.filter = 'saturate(0.36) brightness(0.5) contrast(0.88) blur(1.6px)'
+  ctx.filter = 'saturate(0.3) brightness(0.34) contrast(0.86) blur(2px)'
   ctx.drawImage(buf, Math.round(g.camX), Math.round(g.camY))
   ctx.restore()
 }

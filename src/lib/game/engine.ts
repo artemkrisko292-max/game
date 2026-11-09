@@ -44,8 +44,8 @@ const STEP = 1 / 60
 const EPS = 0.01
 
 const ENERGY_MAX = 100
-const DRAIN_BASE = 4 // расход энергии в секунду — батарея тает стремительно
-const DRAIN_LAMP = 11 // в секунду внутри конуса света — жарит так, что искры сыпятся
+const DRAIN_BASE = 9 // расход энергии в секунду — батарея испаряется прямо на глазах
+const DRAIN_LAMP = 24 // в секунду внутри конуса света — жарит так, что искры сыпятся
 const LAMP_CONE_LEN = 420
 const DMG_VAMPIRE = 24
 const DMG_PHANTOM = 16
@@ -1183,7 +1183,7 @@ export class EnergoGame {
 
   private updateEnergy() {
     // Сложность растёт с номером уровня: энергия тает всё быстрее
-    const mul = 1 + this.levelIndex * 0.03
+    const mul = 1 + this.levelIndex * 0.05
     this.energy -=
       (DRAIN_BASE * mul + this.lampDrain() * (0.8 + mul * 0.2)) * STEP
     if (this.energy <= 0) {

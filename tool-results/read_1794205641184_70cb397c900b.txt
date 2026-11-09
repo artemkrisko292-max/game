@@ -1,0 +1,2002 @@
+     1→// Отрисовка игры «ЭнергоГерой» на Canvas 2D.
+     2→// Вся графика рисуется кодом: спрайты, фоны, свет, HUD.
+     3→
+     4→import { EnergoGame, TILE, VIEW_W, VIEW_H } from './engine'
+     5→import { LEVELS } from './levels'
+     6→import type { ThemeName } from './levels'
+     7→
+     8→interface Theme {
+     9→  skyTop: string
+    10→  skyBot: string
+    11→  wall: string
+    12→  wallTop: string
+    13→  wallDark: string
+    14→  accent: string
+    15→}
+    16→
+    17→const THEMES: Record<ThemeName, Theme> = {
+    18→  bedroom: {
+    19→    skyTop: '#231a33',
+    20→    skyBot: '#473059',
+    21→    wall: '#43325a',
+    22→    wallTop: '#5d4577',
+    23→    wallDark: '#322447',
+    24→    accent: '#8f6bb0',
+    25→  },
+    26→  kitchen: {
+    27→    skyTop: '#fdf0c2',
+    28→    skyBot: '#f6d896',
+    29→    wall: '#c9713d',
+    30→    wallTop: '#e8934f',
+    31→    wallDark: '#a5562a',
+    32→    accent: '#b8622f',
+    33→  },
+    34→  basement: {
+    35→    skyTop: '#141b16',
+    36→    skyBot: '#28352b',
+    37→    wall: '#3a463d',
+    38→    wallTop: '#526254',
+    39→    wallDark: '#2b362e',
+    40→    accent: '#6d8a6f',
+    41→  },
+    42→  living: {
+    43→    skyTop: '#22304f',
+    44→    skyBot: '#4a5f80',
+    45→    wall: '#6b4a35',
+    46→    wallTop: '#8a6248',
+    47→    wallDark: '#523728',
+    48→    accent: '#a5754f',
+    49→  },
+    50→  attic: {
+    51→    skyTop: '#33222a',
+    52→    skyBot: '#6b4a4a',
+    53→    wall: '#7a4a3a',
+    54→    wallTop: '#9a6450',
+    55→    wallDark: '#5c3628',
+    56→    accent: '#b5825f',
+    57→  },
+    58→  office: {
+    59→    skyTop: '#241c12',
+    60→    skyBot: '#4c3a24',
+    61→    wall: '#5d4630',
+    62→    wallTop: '#7d5f40',
+    63→    wallDark: '#42311e',
+    64→    accent: '#b08d57',
+    65→  },
+    66→}
+    67→
+    68→export function render(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+    69→  const theme = THEMES[LEVELS[g.levelIndex].theme]
+    70→  ctx.clearRect(0, 0, VIEW_W, VIEW_H)
+    71→  ctx.save()
+    72→
+    73→  // Тряска камеры
+    74→  if (g.shake > 0.3) {
+    75→    ctx.translate(
+    76→      (Math.random() - 0.5) * g.shake,
+    77→      (Math.random() - 0.5) * g.shake,
+    78→    )
+    79→  }
+    80→
+    81→  drawBackground(ctx, g, theme)
+    82→
+    83→  ctx.save()
+    84→  ctx.translate(-Math.round(g.camX), -Math.round(g.camY))
+    85→
+    86→  // Мебель — ЗА геометрией уровня, приглушённая: читается задним планом
+    87→  drawDecor(ctx, g)
+    88→  // Воздушная дымка: весь тыл сцены (фон + интерьер) тонет в цвете комнаты,
+    89→  // а геометрия, герой и объекты поверх остаются яркими — иерархия читается сразу
+    90→  drawDepthWash(ctx, g, theme)
+    91→  drawTiles(ctx, g, theme)
+    92→  drawHazards(ctx, g)
+    93→  drawSwitches(ctx, g)
+    94→  drawExit(ctx, g)
+    95→  drawLampCones(ctx, g)
+    96→  drawBulbs(ctx, g)
+    97→  drawFuses(ctx, g)
+    98→  drawPlats(ctx, g)
+    99→  drawCrumbs(ctx, g)
+   100→  drawVampires(ctx, g)
+   101→  drawRunners(ctx, g)
+   102→  drawPhantoms(ctx, g)
+   103→  drawDrones(ctx, g)
+   104→  drawPlayer(ctx, g)
+   105→  drawParticles(ctx, g)
+   106→  drawLampGlows(ctx, g)
+   107→
+   108→  ctx.restore()
+   109→  ctx.restore()
+   110→
+   111→  // Пылинки в воздухе — комната живая
+   112→  drawAmbient(ctx, g)
+   113→  drawHUD(ctx, g)
+   114→}
+   115→
+   116→/**
+   117→ * Дымка глубины: заливка видимой области полупрозрачным цветом комнаты.
+   118→ * Идёт ПОСЛЕ фона и интерьера, но ДО геометрии — тыл сцены становится
+   119→ * тусклее и «дальше», а игровые объекты выделяются контрастом.
+   120→ */
+   121→function drawDepthWash(
+   122→  ctx: CanvasRenderingContext2D,
+   123→  g: EnergoGame,
+   124→  th: Theme,
+   125→) {
+   126→  ctx.fillStyle = th.skyTop
+   127→  ctx.globalAlpha = 0.32
+   128→  ctx.fillRect(g.camX - 4, g.camY - 4, VIEW_W + 8, VIEW_H + 8)
+   129→  ctx.fillStyle = 'rgba(8,6,14,0.17)'
+   130→  ctx.fillRect(g.camX - 4, g.camY - 4, VIEW_W + 8, VIEW_H + 8)
+   131→  ctx.globalAlpha = 1
+   132→}
+   133→
+   134→/** Медленно дрейфующие пылинки (экранное пространство). */
+   135→function drawAmbient(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   136→  for (let i = 0; i < 24; i++) {
+   137→    const sp = 0.1 + (i % 5) * 0.045
+   138→    const span = VIEW_W + 60
+   139→    const x =
+   140→      ((((i * 163 + g.frame * sp - g.camX * 0.25) % span) + span) % span) - 30
+   141→    const vspan = VIEW_H + 40
+   142→    const y =
+   143→      ((((i * 97 - g.frame * (0.14 + (i % 3) * 0.05)) % vspan) + vspan) %
+   144→        vspan) -
+   145→      20 +
+   146→      Math.sin(g.frame * 0.01 + i * 1.9) * 12
+   147→    const a = 0.035 + 0.045 * (0.5 + 0.5 * Math.sin(g.frame * 0.025 + i * 2.4))
+   148→    ctx.fillStyle = `rgba(255,240,200,${a.toFixed(3)})`
+   149→    ctx.fillRect(x, y, 1.7, 1.7)
+   150→  }
+   151→}
+   152→
+   153→// ---------- Фон и параллакс ----------
+   154→
+   155→function drawBackground(
+   156→  ctx: CanvasRenderingContext2D,
+   157→  g: EnergoGame,
+   158→  th: Theme,
+   159→) {
+   160→  const grad = ctx.createLinearGradient(0, 0, 0, VIEW_H)
+   161→  grad.addColorStop(0, th.skyTop)
+   162→  grad.addColorStop(1, th.skyBot)
+   163→  ctx.fillStyle = grad
+   164→  ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+   165→
+   166→  // Каждой теме — свой художник фона: комната читается сразу.
+   167→  const name = LEVELS[g.levelIndex].theme
+   168→  switch (name) {
+   169→    case 'bedroom':
+   170→      drawBedroomBg(ctx, g)
+   171→      break
+   172→    case 'kitchen':
+   173→      drawKitchenBg(ctx, g)
+   174→      break
+   175→    case 'basement':
+   176→      drawBasementBg(ctx, g)
+   177→      break
+   178→    case 'living':
+   179→      drawLivingBg(ctx, g)
+   180→      break
+   181→    case 'attic':
+   182→      drawAtticBg(ctx, g)
+   183→      break
+   184→    case 'office':
+   185→      drawOfficeBg(ctx, g)
+   186→      break
+   187→  }
+   188→}
+   189→
+   190→function wrapX(i: number, camX: number, k: number, span: number): number {
+   191→  const m = (i * 137.13 - camX * k) % span
+   192→  return (m < 0 ? m + span : m) - 60
+   193→}
+   194→
+   195→function drawBedroomBg(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   196→  // Звёзды
+   197→  ctx.fillStyle = 'rgba(255,240,210,0.8)'
+   198→  for (let i = 0; i < 46; i++) {
+   199→    const x = wrapX(i * 89, g.camX, 0.22, VIEW_W + 120)
+   200→    const y = (i * 53) % 260
+   201→    const s = 1 + ((i * 7) % 3) * 0.5
+   202→    const tw = 0.5 + 0.5 * Math.sin(g.frame * 0.04 + i * 1.7)
+   203→    ctx.globalAlpha = 0.35 + tw * 0.5
+   204→    ctx.fillRect(x, y, s, s)
+   205→  }
+   206→  ctx.globalAlpha = 1
+   207→
+   208→  // Луна
+   209→  const mx = VIEW_W * 0.8 - g.camX * 0.08
+   210→  const mg = ctx.createRadialGradient(mx, 92, 8, mx, 92, 70)
+   211→  mg.addColorStop(0, 'rgba(255,236,180,0.5)')
+   212→  mg.addColorStop(1, 'rgba(255,236,180,0)')
+   213→  ctx.fillStyle = mg
+   214→  ctx.fillRect(mx - 70, 22, 140, 140)
+   215→  ctx.fillStyle = '#f7e6ae'
+   216→  ctx.beginPath()
+   217→  ctx.arc(mx, 92, 26, 0, Math.PI * 2)
+   218→  ctx.fill()
+   219→  ctx.fillStyle = 'rgba(214,190,130,0.7)'
+   220→  ctx.beginPath()
+   221→  ctx.arc(mx - 8, 86, 5, 0, Math.PI * 2)
+   222→  ctx.arc(mx + 9, 99, 4, 0, Math.PI * 2)
+   223→  ctx.fill()
+   224→
+   225→  // Полосы обоев + орнамент-горошек
+   226→  ctx.strokeStyle = 'rgba(255,255,255,0.045)'
+   227→  ctx.lineWidth = 26
+   228→  for (let i = 0; i < 14; i++) {
+   229→    const x = wrapX(i * 150, g.camX, 0.45, VIEW_W + 300)
+   230→    ctx.beginPath()
+   231→    ctx.moveTo(x, 0)
+   232→    ctx.lineTo(x, VIEW_H)
+   233→    ctx.stroke()
+   234→  }
+   235→  ctx.fillStyle = 'rgba(255,255,255,0.05)'
+   236→  for (let i = 0; i < 40; i++) {
+   237→    const x = wrapX(i * 64 + 30, g.camX, 0.45, VIEW_W + 300)
+   238→    const y = 40 + ((i * 47) % 340)
+   239→    ctx.beginPath()
+   240→    ctx.arc(x, y, 2.2, 0, Math.PI * 2)
+   241→    ctx.fill()
+   242→  }
+   243→
+   244→  // Гирлянда с огоньками через комнату — мерцает
+   245→  const gy = 96
+   246→  ctx.strokeStyle = 'rgba(20,16,28,0.8)'
+   247→  ctx.lineWidth = 2
+   248→  ctx.beginPath()
+   249→  ctx.moveTo(-40, gy - 22)
+   250→  ctx.quadraticCurveTo(VIEW_W * 0.5, gy + 26, VIEW_W + 40, gy - 22)
+   251→  ctx.stroke()
+   252→  for (let i = 0; i < 12; i++) {
+   253→    const t = (i + 0.5) / 12
+   254→    const bx = -40 + (VIEW_W + 80) * t
+   255→    const by =
+   256→      gy - 22 + Math.sin(Math.PI * t) * 48 + Math.sin(g.frame * 0.03 + i) * 1.5
+   257→    const on = Math.sin(g.frame * 0.09 + i * 2.1) > -0.25
+   258→    const col = i % 3 === 0 ? '255,190,120' : i % 3 === 1 ? '150,220,255' : '255,235,170'
+   259→    ctx.fillStyle = `rgba(${col},${on ? 0.85 : 0.2})`
+   260→    ctx.beginPath()
+   261→    ctx.arc(bx, by + 3, 2.6, 0, Math.PI * 2)
+   262→    ctx.fill()
+   263→    if (on) {
+   264→      const gg = ctx.createRadialGradient(bx, by + 3, 0, bx, by + 3, 12)
+   265→      gg.addColorStop(0, `rgba(${col},0.28)`)
+   266→      gg.addColorStop(1, `rgba(${col},0)`)
+   267→      ctx.fillStyle = gg
+   268→      ctx.fillRect(bx - 12, by - 9, 24, 24)
+   269→    }
+   270→  }
+   271→
+   272→  // Картины на «дальней стене»
+   273→  for (let i = 0; i < 3; i++) {
+   274→    const x = wrapX(i * 430 + 190, g.camX, 0.45, VIEW_W + 900)
+   275→    ctx.fillStyle = 'rgba(24,18,36,0.85)'
+   276→    rr(ctx, x, 150, 64, 48, 3)
+   277→    ctx.fill()
+   278→    ctx.strokeStyle = 'rgba(190,160,110,0.5)'
+   279→    ctx.lineWidth = 3
+   280→    ctx.stroke()
+   281→    // «пейзаж» внутри рамки
+   282→    ctx.fillStyle = 'rgba(120,90,160,0.4)'
+   283→    ctx.fillRect(x + 5, 155, 54, 20)
+   284→    ctx.fillStyle = 'rgba(60,44,86,0.6)'
+   285→    ctx.beginPath()
+   286→    ctx.moveTo(x + 5, 190)
+   287→    ctx.lineTo(x + 24, 168)
+   288→    ctx.lineTo(x + 40, 186)
+   289→    ctx.lineTo(x + 52, 172)
+   290→    ctx.lineTo(x + 59, 190)
+   291→    ctx.closePath()
+   292→    ctx.fill()
+   293→  }
+   294→}
+   295→
+   296→function drawKitchenBg(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   297→  // Солнце
+   298→  const mx = VIEW_W * 0.82 - g.camX * 0.06
+   299→  const sg = ctx.createRadialGradient(mx, 80, 10, mx, 80, 90)
+   300→  sg.addColorStop(0, 'rgba(255,214,110,0.65)')
+   301→  sg.addColorStop(1, 'rgba(255,214,110,0)')
+   302→  ctx.fillStyle = sg
+   303→  ctx.fillRect(mx - 90, -10, 180, 180)
+   304→  ctx.fillStyle = '#ffd66b'
+   305→  ctx.beginPath()
+   306→  ctx.arc(mx, 80, 30, 0, Math.PI * 2)
+   307→  ctx.fill()
+   308→
+   309→  // Окна с занавесками и подоконниками
+   310→  for (let i = 0; i < 4; i++) {
+   311→    const x = wrapX(i * 420 + 120, g.camX, 0.35, VIEW_W + 800)
+   312→    // занавески
+   313→    ctx.fillStyle = 'rgba(200,120,70,0.35)'
+   314→    rr(ctx, x - 10, 52, 24, 188, 6)
+   315→    ctx.fill()
+   316→    rr(ctx, x + 136, 52, 24, 188, 6)
+   317→    ctx.fill()
+   318→    ctx.fillStyle = 'rgba(255,255,255,0.55)'
+   319→    rr(ctx, x, 60, 150, 170, 10)
+   320→    ctx.fill()
+   321→    ctx.fillStyle = 'rgba(180,220,170,0.65)'
+   322→    rr(ctx, x + 8, 68, 134, 154, 6)
+   323→    ctx.fill()
+   324→    // вид за стеклом: облако
+   325→    ctx.fillStyle = 'rgba(255,255,255,0.5)'
+   326→    const cl = ((g.frame * 0.08 + i * 60) % 220) - 40
+   327→    ctx.beginPath()
+   328→    ctx.arc(x + 40 + cl * 0.4, 110, 11, 0, Math.PI * 2)
+   329→    ctx.arc(x + 54 + cl * 0.4, 104, 14, 0, Math.PI * 2)
+   330→    ctx.arc(x + 68 + cl * 0.4, 112, 10, 0, Math.PI * 2)
+   331→    ctx.fill()
+   332→    ctx.strokeStyle = 'rgba(120,90,50,0.5)'
+   333→    ctx.lineWidth = 5
+   334→    ctx.beginPath()
+   335→    ctx.moveTo(x + 75, 68)
+   336→    ctx.lineTo(x + 75, 222)
+   337→    ctx.moveTo(x + 8, 145)
+   338→    ctx.lineTo(x + 142, 145)
+   339→    ctx.stroke()
+   340→    // подоконник + растение
+   341→    ctx.fillStyle = 'rgba(150,95,45,0.55)'
+   342→    rr(ctx, x - 6, 228, 162, 9, 2)
+   343→    ctx.fill()
+   344→    ctx.fillStyle = 'rgba(160,70,50,0.85)'
+   345→    rr(ctx, x + 104, 210, 18, 18, 3)
+   346→    ctx.fill()
+   347→    ctx.fillStyle = 'rgba(90,150,80,0.75)'
+   348→    ctx.beginPath()
+   349→    ctx.ellipse(x + 113, 202, 12, 9, 0, 0, Math.PI * 2)
+   350→    ctx.ellipse(x + 105, 207, 8, 6, -0.5, 0, Math.PI * 2)
+   351→    ctx.ellipse(x + 121, 207, 8, 6, 0.5, 0, Math.PI * 2)
+   352→    ctx.fill()
+   353→  }
+   354→
+   355→  // Полка с банками
+   356→  for (let i = 0; i < 3; i++) {
+   357→    const x = wrapX(i * 470 + 60, g.camX, 0.45, VIEW_W + 900)
+   358→    ctx.fillStyle = 'rgba(140,90,40,0.6)'
+   359→    ctx.fillRect(x, 130, 120, 6)
+   360→    for (let j = 0; j < 4; j++) {
+   361→      const bx = x + 8 + j * 28
+   362→      ctx.fillStyle = 'rgba(220,200,150,0.5)'
+   363→      rr(ctx, bx, 106, 20, 24, 3)
+   364→      ctx.fill()
+   365→      ctx.fillStyle = ['rgba(190,120,60,0.7)', 'rgba(150,160,70,0.7)', 'rgba(190,60,50,0.7)', 'rgba(120,150,190,0.7)'][j]
+   366→      rr(ctx, bx + 2, 114, 16, 14, 2)
+   367→      ctx.fill()
+   368→      ctx.fillStyle = 'rgba(90,60,30,0.8)'
+   369→      rr(ctx, bx + 5, 102, 10, 5, 1.5)
+   370→      ctx.fill()
+   371→    }
+   372→  }
+   373→
+   374→  // Фартук из плитки внизу
+   375→  ctx.strokeStyle = 'rgba(150,95,45,0.16)'
+   376→  ctx.lineWidth = 2
+   377→  for (let i = 0; i < 26; i++) {
+   378→    const x = wrapX(i * 60, g.camX, 0.6, VIEW_W + 200)
+   379→    for (let r = 0; r < 4; r++) {
+   380→      ctx.strokeRect(x, 330 + r * 44, 56, 40)
+   381→    }
+   382→  }
+   383→}
+   384→
+   385→function drawBasementBg(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   386→  // Трубы с вентилями
+   387→  for (const py of [110, 250]) {
+   388→    ctx.fillStyle = 'rgba(90,110,95,0.5)'
+   389→    ctx.fillRect(0, py, VIEW_W, 16)
+   390→    ctx.fillStyle = 'rgba(60,75,64,0.6)'
+   391→    ctx.fillRect(0, py + 12, VIEW_W, 4)
+   392→    for (let i = 0; i < 8; i++) {
+   393→      const x = wrapX(i * 260, g.camX, 0.4, VIEW_W + 500)
+   394→      ctx.fillStyle = 'rgba(110,130,115,0.6)'
+   395→      ctx.fillRect(x, py - 4, 18, 24)
+   396→      // вентиль — медленно крутится
+   397→      const vx = x + 130
+   398→      if (vx < VIEW_W + 60) {
+   399→        ctx.save()
+   400→        ctx.translate(vx, py + 8)
+   401→        ctx.rotate(g.frame * 0.006 + i)
+   402→        ctx.strokeStyle = 'rgba(150,90,60,0.75)'
+   403→        ctx.lineWidth = 3.4
+   404→        ctx.beginPath()
+   405→        ctx.arc(0, 0, 8, 0, Math.PI * 2)
+   406→        ctx.moveTo(-8, 0)
+   407→        ctx.lineTo(8, 0)
+   408→        ctx.moveTo(0, -8)
+   409→        ctx.lineTo(0, 8)
+   410→        ctx.stroke()
+   411→        ctx.restore()
+   412→      }
+   413→    }
+   414→  }
+   415→  // Лампы в клетках-защитах на потолке
+   416→  for (let i = 0; i < 4; i++) {
+   417→    const x = wrapX(i * 340 + 170, g.camX, 0.5, VIEW_W + 700)
+   418→    ctx.strokeStyle = 'rgba(24,30,26,0.9)'
+   419→    ctx.lineWidth = 2
+   420→    ctx.beginPath()
+   421→    ctx.moveTo(x, 0)
+   422→    ctx.lineTo(x, 26)
+   423→    ctx.stroke()
+   424→    const on = Math.sin(g.frame * 0.05 + i * 2.4) > -0.6
+   425→    ctx.fillStyle = on ? 'rgba(220,255,200,0.9)' : 'rgba(90,110,95,0.5)'
+   426→    ctx.beginPath()
+   427→    ctx.arc(x, 32, 6, 0, Math.PI * 2)
+   428→    ctx.fill()
+   429→    ctx.beginPath()
+   430→    for (let k = 0; k < 3; k++) {
+   431→      ctx.arc(x, 32, 9 + k * 3.4, 0.15 * Math.PI, 0.85 * Math.PI)
+   432→      ctx.moveTo(x - 12 - k * 3.4, 34)
+   433→    }
+   434→    ctx.strokeStyle = 'rgba(24,30,26,0.75)'
+   435→    ctx.lineWidth = 1.4
+   436→    ctx.stroke()
+   437→    if (on) {
+   438→      const gg = ctx.createRadialGradient(x, 34, 2, x, 34, 60)
+   439→      gg.addColorStop(0, 'rgba(200,255,190,0.16)')
+   440→      gg.addColorStop(1, 'rgba(200,255,190,0)')
+   441→      ctx.fillStyle = gg
+   442→      ctx.fillRect(x - 60, 0, 120, 110)
+   443→    }
+   444→  }
+   445→  // Предупреждающий щит
+   446→  const wx = wrapX(430, g.camX, 0.4, VIEW_W + 500)
+   447→  ctx.fillStyle = 'rgba(200,168,40,0.8)'
+   448→  rr(ctx, wx, 320, 74, 34, 3)
+   449→  ctx.fill()
+   450→  ctx.strokeStyle = 'rgba(30,26,16,0.8)'
+   451→  ctx.lineWidth = 2
+   452→  ctx.stroke()
+   453→  ctx.fillStyle = 'rgba(30,26,16,0.85)'
+   454→  ctx.font = fnt(11, 800)
+   455→  ctx.textAlign = 'center'
+   456→  ctx.fillText('220 В', wx + 37, 342)
+   457→  // Зелёное свечение
+   458→  for (let i = 0; i < 5; i++) {
+   459→    const x = wrapX(i * 380 + 90, g.camX, 0.3, VIEW_W + 600)
+   460→    const gl = ctx.createRadialGradient(x, 400, 5, x, 400, 90)
+   461→    gl.addColorStop(0, 'rgba(140,230,140,0.10)')
+   462→    gl.addColorStop(1, 'rgba(140,230,140,0)')
+   463→    ctx.fillStyle = gl
+   464→    ctx.fillRect(x - 90, 310, 180, 180)
+   465→  }
+   466→}
+   467→
+   468→function drawLivingBg(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   469→  // Обои: полосы + жемчужный узор
+   470→  ctx.strokeStyle = 'rgba(255,255,255,0.035)'
+   471→  ctx.lineWidth = 34
+   472→  for (let i = 0; i < 12; i++) {
+   473→    const x = wrapX(i * 170, g.camX, 0.45, VIEW_W + 340)
+   474→    ctx.beginPath()
+   475→    ctx.moveTo(x, 0)
+   476→    ctx.lineTo(x, VIEW_H)
+   477→    ctx.stroke()
+   478→  }
+   479→  // Окно с шторами и ночным небом
+   480→  for (let i = 0; i < 2; i++) {
+   481→    const x = wrapX(i * 560 + 140, g.camX, 0.35, VIEW_W + 1100)
+   482→    ctx.fillStyle = 'rgba(20,26,46,0.95)'
+   483→    rr(ctx, x, 54, 170, 190, 6)
+   484→    ctx.fill()
+   485→    // звёзды за стеклом
+   486→    ctx.fillStyle = 'rgba(255,240,210,0.8)'
+   487→    for (let s = 0; s < 8; s++) {
+   488→      ctx.fillRect(x + 14 + ((s * 37) % 144), 66 + ((s * 53) % 150), 1.6, 1.6)
+   489→    }
+   490→    // луна за стеклом
+   491→    ctx.fillStyle = '#f7e6ae'
+   492→    ctx.beginPath()
+   493→    ctx.arc(x + 128, 96, 13, 0, Math.PI * 2)
+   494→    ctx.fill()
+   495→    // рама и переплёт
+   496→    ctx.strokeStyle = 'rgba(90,62,40,0.9)'
+   497→    ctx.lineWidth = 7
+   498→    rr(ctx, x, 54, 170, 190, 6)
+   499→    ctx.stroke()
+   500→    ctx.lineWidth = 4
+   501→    ctx.beginPath()
+   502→    ctx.moveTo(x + 85, 54)
+   503→    ctx.lineTo(x + 85, 244)
+   504→    ctx.moveTo(x, 149)
+   505→    ctx.lineTo(x + 170, 149)
+   506→    ctx.stroke()
+   507→    // шторы
+   508→    ctx.fillStyle = 'rgba(120,84,58,0.75)'
+   509→    rr(ctx, x - 16, 46, 30, 208, 8)
+   510→    ctx.fill()
+   511→    rr(ctx, x + 156, 46, 30, 208, 8)
+   512→    ctx.fill()
+   513→    ctx.fillStyle = 'rgba(90,62,40,0.9)'
+   514→    ctx.fillRect(x - 20, 44, 210, 7)
+   515→  }
+   516→  // Настенные часы — секундная стрелка идёт
+   517→  for (let i = 0; i < 3; i++) {
+   518→    const x = wrapX(i * 470 + 320, g.camX, 0.45, VIEW_W + 900)
+   519→    ctx.fillStyle = 'rgba(60,44,34,0.9)'
+   520→    ctx.beginPath()
+   521→    ctx.arc(x, 110, 20, 0, Math.PI * 2)
+   522→    ctx.fill()
+   523→    ctx.strokeStyle = 'rgba(200,170,120,0.6)'
+   524→    ctx.lineWidth = 3
+   525→    ctx.stroke()
+   526→    ctx.strokeStyle = 'rgba(230,215,180,0.75)'
+   527→    ctx.lineWidth = 2
+   528→    const ah = (g.frame * 0.001 + i) * Math.PI / 2
+   529→    const am = (g.frame * 0.012 + i * 2) * Math.PI / 30
+   530→    ctx.beginPath()
+   531→    ctx.moveTo(x, 110)
+   532→    ctx.lineTo(x + Math.sin(ah) * 9, 110 - Math.cos(ah) * 9)
+   533→    ctx.moveTo(x, 110)
+   534→    ctx.lineTo(x + Math.sin(am) * 14, 110 - Math.cos(am) * 14)
+   535→    ctx.stroke()
+   536→  }
+   537→  // Картины
+   538→  for (let i = 0; i < 3; i++) {
+   539→    const x = wrapX(i * 390 + 60, g.camX, 0.45, VIEW_W + 800)
+   540→    ctx.fillStyle = 'rgba(46,34,26,0.9)'
+   541→    rr(ctx, x, 220, 58, 44, 3)
+   542→    ctx.fill()
+   543→    ctx.strokeStyle = 'rgba(190,160,110,0.55)'
+   544→    ctx.lineWidth = 3
+   545→    ctx.stroke()
+   546→    ctx.fillStyle = 'rgba(150,120,90,0.35)'
+   547→    ctx.beginPath()
+   548→    ctx.arc(x + 29, 242, 14, 0, Math.PI * 2)
+   549→    ctx.fill()
+   550→  }
+   551→}
+   552→
+   553→function drawAtticBg(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   554→  // Стропила — ровные диагональные балки под одинаковым углом
+   555→  ctx.strokeStyle = 'rgba(46,28,20,0.55)'
+   556→  ctx.lineWidth = 13
+   557→  for (let i = -2; i < 9; i++) {
+   558→    const x = wrapX(i * 200, g.camX, 0.4, VIEW_W + 400)
+   559→    ctx.beginPath()
+   560→    ctx.moveTo(x, -20)
+   561→    ctx.lineTo(x + 130, VIEW_H + 20)
+   562→    ctx.stroke()
+   563→  }
+   564→  ctx.strokeStyle = 'rgba(20,12,8,0.5)'
+   565→  ctx.lineWidth = 2
+   566→  for (let i = -2; i < 9; i++) {
+   567→    const x = wrapX(i * 200, g.camX, 0.4, VIEW_W + 400)
+   568→    ctx.beginPath()
+   569→    ctx.moveTo(x + 6, -20)
+   570→    ctx.lineTo(x + 136, VIEW_H + 20)
+   571→    ctx.stroke()
+   572→  }
+   573→  // Мансардное окно с луной
+   574→  for (let i = 0; i < 2; i++) {
+   575→    const x = wrapX(i * 620 + 210, g.camX, 0.35, VIEW_W + 1200)
+   576→    ctx.fillStyle = 'rgba(24,16,26,0.95)'
+   577→    ctx.beginPath()
+   578→    ctx.arc(x, 90, 40, 0, Math.PI * 2)
+   579→    ctx.fill()
+   580→    ctx.fillStyle = 'rgba(247,230,174,0.9)'
+   581→    ctx.beginPath()
+   582→    ctx.arc(x + 10, 82, 12, 0, Math.PI * 2)
+   583→    ctx.fill()
+   584→    ctx.strokeStyle = 'rgba(120,86,60,0.9)'
+   585→    ctx.lineWidth = 6
+   586→    ctx.beginPath()
+   587→    ctx.arc(x, 90, 40, 0, Math.PI * 2)
+   588→    ctx.stroke()
+   589→    ctx.lineWidth = 2.4
+   590→    ctx.beginPath()
+   591→    ctx.moveTo(x - 40, 90)
+   592→    ctx.lineTo(x + 40, 90)
+   593→    ctx.moveTo(x, 50)
+   594→    ctx.lineTo(x, 130)
+   595→    ctx.stroke()
+   596→    // луч
+   597→    const lg = ctx.createLinearGradient(x, 100, x - 60, 320)
+   598→    lg.addColorStop(0, 'rgba(230,220,255,0.10)')
+   599→    lg.addColorStop(1, 'rgba(230,220,255,0)')
+   600→    ctx.fillStyle = lg
+   601→    ctx.beginPath()
+   602→    ctx.moveTo(x - 14, 104)
+   603→    ctx.lineTo(x + 6, 104)
+   604→    ctx.lineTo(x - 66, 330)
+   605→    ctx.lineTo(x - 132, 330)
+   606→    ctx.closePath()
+   607→    ctx.fill()
+   608→  }
+   609→  // Цепи с крюками
+   610→  for (let i = 0; i < 5; i++) {
+   611→    const x = wrapX(i * 300 + 90, g.camX, 0.5, VIEW_W + 600)
+   612→    ctx.strokeStyle = 'rgba(30,22,18,0.75)'
+   613→    ctx.lineWidth = 3
+   614→    ctx.beginPath()
+   615→    ctx.moveTo(x, 0)
+   616→    ctx.lineTo(x, 54)
+   617→    ctx.stroke()
+   618→    ctx.lineWidth = 2
+   619→    ctx.beginPath()
+   620→    ctx.arc(x, 62, 8, -0.4, Math.PI + 0.4)
+   621→    ctx.stroke()
+   622→  }
+   623→  // Паутина по углам экрана
+   624→  ctx.strokeStyle = 'rgba(220,215,200,0.10)'
+   625→  ctx.lineWidth = 1.2
+   626→  for (let k = 0; k < 4; k++) {
+   627→    const r = 18 + k * 17
+   628→    ctx.beginPath()
+   629→    ctx.arc(0, 0, r, 0, Math.PI / 2)
+   630→    ctx.stroke()
+   631→  }
+   632→  for (let k = 0; k < 4; k++) {
+   633→    const r = 14 + k * 14
+   634→    ctx.beginPath()
+   635→    ctx.arc(VIEW_W, 0, r, Math.PI / 2, Math.PI)
+   636→    ctx.stroke()
+   637→  }
+   638→}
+   639→
+   640→function drawOfficeBg(ctx: CanvasRenderingContext2D, g: EnergoGame) {
+   641→  // Домашний кабинет: деревянные панели, окно со шторами, книжные полки
+   642→  // и семейные фото на стенах — никакой «офисной» атрибутики.
+   643→  //
+   644→  // Вертикальный молдинг деревянной обшивки
+   645→  ctx.strokeStyle = 'rgba(255,224,170,0.05)'
+   646→  ctx.lineWidth = 9
+   647→  for (let i = 0; i < 13; i++) {
+   648→    const x = wrapX(i * 150, g.camX, 0.45, VIEW_W + 300)
+   649→    ctx.beginPath()
+   650→    ctx.moveTo(x, 0)
+   651→    ctx.lineTo(x, VIEW_H)
+   652→    ctx.stroke()
+   653→  }
+   654→  // Горизонтальные бордюры панелей
+   655→  ctx.strokeStyle = 'rgba(120,90,55,0.22)'
+   656→  ctx.lineWidth = 3
+   657→  for (const by of [262, 474]) {
+   658→    ctx.beginPath()
+   659→    ctx.moveTo(0, by)
+   660→    ctx.lineTo(VIEW_W, by)
+   661→    ctx.stroke()
+   662→  }
+   663→
+   664→  // Окно с тяжёлыми шторами: за стеклом глубокий вечер и сад
+   665→  for (let i = 0; i < 2; i++) {
+   666→    const x = wrapX(i * 620 + 150, g.camX, 0.35, VIEW_W + 1200)
+   667→    ctx.fillStyle = 'rgba(22,28,48,0.95)'
+   668→    rr(ctx, x, 56, 168, 186, 6)
+   669→    ctx.fill()
+   670→    // звёзды
+   671→    ctx.fillStyle = 'rgba(255,240,210,0.7)'
+   672→    for (let s = 0; s < 7; s++) {
+   673→      ctx.fillRect(x + 14 + ((s * 41) % 140), 68 + ((s * 59) % 140), 1.6, 1.6)
+   674→    }
+   675→    // луна
+   676→    ctx.fillStyle = '#f7e6ae'
+   677→    ctx.beginPath()
+   678→    ctx.arc(x + 126, 98, 13, 0, Math.PI * 2)
+   679→    ctx.fill()
+   680→    // силуэт сада за окном
+   681→    ctx.fillStyle = 'rgba(14,20,16,0.9)'
+   682→    ctx.beginPath()
+   683→    ctx.moveTo(x, 236)
+   684→    ctx.lineTo(x, 202)
+   685→    ctx.quadraticCurveTo(x + 40, 182, x + 74, 199)
+   686→    ctx.quadraticCurveTo(x + 116, 179, x + 168, 207)
+   687→    ctx.lineTo(x + 168, 236)
+   688→    ctx.closePath()
+   689→    ctx.fill()
+   690→    // деревянная рама и переплёт
+   691→    ctx.strokeStyle = 'rgba(74,54,34,0.95)'
+   692→    ctx.lineWidth = 7
+   693→    rr(ctx, x, 56, 168, 186, 6)
+   694→    ctx.stroke()
+   695→    ctx.lineWidth = 4
+   696→    ctx.beginPath()
+   697→    ctx.moveTo(x + 84, 56)
+   698→    ctx.lineTo(x + 84, 242)
+   699→    ctx.moveTo(x, 149)
+   700→    ctx.lineTo(x + 168, 149)
+   701→    ctx.stroke()
+   702→    // шторы с подхватами
+   703→    ctx.fillStyle = 'rgba(96,58,44,0.8)'
+   704→    rr(ctx, x - 18, 48, 32, 202, 9)
+   705→    ctx.fill()
+   706→    rr(ctx, x + 154, 48, 32, 202, 9)
+   707→    ctx.fill()
+   708→    ctx.fillStyle = 'rgba(150,110,70,0.45)'
+   709→    rr(ctx, x - 14, 118, 24, 14, 5)
+   710→    ctx.fill()
+   711→    rr(ctx, x + 158, 118, 24, 14, 5)
+   712→    ctx.fill()
+   713→    // карниз с набалдашниками
+   714→    ctx.fillStyle = 'rgba(60,42,26,0.95)'
+   715→    ctx.fillRect(x - 24, 44, 216, 7)
+   716→    ctx.beginPath()
+   717→    ctx.arc(x - 24, 47, 5, 0, Math.PI * 2)
+   718→    ctx.arc(x + 192, 47, 5, 0, Math.PI * 2)
+   719→    ctx.fill()
+   720→  }
+   721→
+   722→  // Книжные полки: приглушённые корешки в два ряда
+   723→  const bookCols = [
+   724→    'rgba(122,74,58,0.8)',
+   725→    'rgba(86,102,74,0.8)',
+   726→    'rgba(148,120,70,0.75)',
+   727→    'rgba(70,86,106,0.8)',
+   728→    'rgba(104,74,96,0.75)',
+   729→  ]
+   730→  for (let i = 0; i < 3; i++) {
+   731→    const x = wrapX(i * 450 + 70, g.camX, 0.45, VIEW_W + 900)
+   732→    for (let row = 0; row < 2; row++) {
+   733→      const sy = 168 + row * 62
+   734→      let bx = x + 4
+   735→      let bi = i * 5 + row * 3
+   736→      while (bx < x + 118) {
+   737→        const bw = 6 + ((bi * 29) % 7)
+   738→        const bh = 30 + ((bi * 17) % 10)
+   739→        ctx.fillStyle = bookCols[(bi + row) % bookCols.length]
+   740→        ctx.fillRect(bx, sy + 42 - bh, bw, bh)
+   741→        bx += bw + 2
+   742→        bi++
+   743→      }
+   744→      // полка и боковины
+   745→      ctx.fillStyle = 'rgba(52,38,24,0.9)'
+   746→      ctx.fillRect(x, sy + 42, 128, 7)
+   747→      ctx.fillStyle = 'rgba(74,54,34,0.95)'
+   748→      ctx.fillRect(x - 5, sy - 2, 6, 52)
+   749→      ctx.fillRect(x + 127, sy - 2, 6, 52)
+   750→    }
+   751→  }
+   752→
+   753→  // Семейные фото в рамках
+   754→  for (let i = 0; i < 3; i++) {
+   755→    const x = wrapX(i * 500 + 320, g.camX, 0.45, VIEW_W + 900)
+   756→    const y = 92 + (i % 2) * 26
+   757→    ctx.fillStyle = 'rgba(40,28,18,0.95)'
+   758→    rr(ctx, x, y, 52, 62, 3)
+   759→    ctx.fill()
+   760→    ctx.strokeStyle = 'rgba(176,141,87,0.6)'
+   761→    ctx.lineWidth = 3
+   762→    ctx.stroke()
+   763→    ctx.fillStyle = 'rgba(158,132,96,0.4)'
+   764→    rr(ctx, x + 6, y + 6, 40, 50, 2)
+   765→    ctx.fill()
+   766→    // силуэт на портрете
+   767→    ctx.fillStyle = 'rgba(70,52,36,0.85)'
+   768→    ctx.beginPath()
+   769→    ctx.arc(x + 26, y + 26, 9, 0, Math.PI * 2)
+   770→    ctx.fill()
+   771→    ctx.beginPath()
+   772→    ctx.ellipse(x + 26, y + 52, 14, 11, 0, Math.PI, 0)
+   773→    ctx.fill()
+   774→  }
+   775→
+   776→  // Тёплые пятна света от торшеров — комната обжитая
+   777→  for (let i = 0; i < 4; i++) {
+   778→    const x = wrapX(i * 430 + 240, g.camX, 0.3, VIEW_W + 800)
+   779→    const gl = ctx.createRadialGradient(x, 330, 8, x, 330, 110)
+   780→    gl.addColorStop(0, 'rgba(255,196,110,0.12)')
+   781→    gl.addColorStop(1, 'rgba(255,196,110,0)')
+   782→    ctx.fillStyle = gl
+   783→    ctx.fillRect(x - 110, 220, 220, 220)
+   784→  }
+   785→}
+   786→
+   787→// ---------- Тайлы ----------
+   788→
+   789→function hash2(c: number, r: number): number {
+   790→  const h = Math.imul(c | 0, 73856093) ^ Math.imul(r | 0, 19349663)
+   791→  return ((h >>> 0) % 1000) / 1000
+   792→}
+   793→
+   794→function drawTiles(
+   795→  ctx: CanvasRenderingContext2D,
+   796→  g: EnergoGame,
+   797→  th: Theme,
+   798→) {
+   799→  const c0 = Math.max(0, Math.floor(g.camX / TILE) - 1)
+   800→  const c1 = Math.min(g.cols - 1, Math.ceil((g.camX + VIEW_W) / TILE) + 1)
+   801→  const r0 = Math.max(0, Math.floor(g.camY / TILE) - 1)
+   802→  const r1 = Math.min(g.rows - 1, Math.ceil((g.camY + VIEW_H) / TILE) + 1)
+   803→
+   804→  for (let r = r0; r <= r1; r++) {
+   805→    for (let c = c0; c <= c1; c++) {
+   806→      if (g.grid[r * g.cols + c] !== 1) continue
+   807→      const x = c * TILE
+   808→      const y = r * TILE
+   809→      ctx.fillStyle = th.wall
+   810→      ctx.fillRect(x, y, TILE, TILE)
+   811→
+   812→      // Тёмный низ
+   813→      if (r + 1 >= g.rows || g.grid[(r + 1) * g.cols + c] !== 1) {
+   814→        ctx.fillStyle = th.wallDark
+   815→        ctx.fillRect(x, y + TILE - 6, TILE, 6)
+   816→      }
+   817→      // Светлый верх
+   818→      if (r === 0 || g.grid[(r - 1) * g.cols + c] !== 1) {
+   819→        ctx.fillStyle = th.wallTop
+   820→        ctx.fillRect(x, y, TILE, 7)
+   821→        ctx.fillStyle = th.accent
+   822→        ctx.fillRect(x, y + 7, TILE, 2)
+   823→      }
+   824→      // Пятнышки/шов
+   825→      const h = hash2(c, r)
+   826→      ctx.fillStyle = th.wallDark
+   827→      ctx.globalAlpha = 0.35
+   828→      if (h < 0.3) {
+   829→        ctx.fillRect(x + 6 + h * 60, y + 12 + h * 40, 8, 4)
+   830→      } else if (h < 0.55) {
+   831→        ctx.fillRect(x + 24, y + 8 + h * 30, 4, 10)
+   832→      } else if (h < 0.75) {
+   833→        ctx.fillRect(x + 4, y + 22, 12, 3)
+   834→      }
+   835→      ctx.globalAlpha = 1
+   836→      // Тонкая рамка
+   837→      ctx.strokeStyle = 'rgba(0,0,0,0.18)'
+   838→      ctx.lineWidth = 1
+   839→      ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1)
+   840→    }
+   841→  }
+   842→}
+   843→
+   844→// ---------- Интерьер: мебель на этажах ----------
+   845→
+   846→interface Piece {
+   847→  /** Ширина в тайлах. */
+   848→  w: number
+   849→  /** Высота в тайлах (для проверки свободного места). */
+   850→  h: number
+   851→  draw: (ctx: CanvasRenderingContext2D, x: number, y: number, f: number) => void
+   852→}
+   853→
+   854→const WOOD = '#5a4530'
+   855→const WOOD_D = '#3d2e1f'
+   856→const WOOD_L = '#6f573d'
+   857→const METAL = '#6a7076'
+   858→const METAL_D = '#454b51'
+   859→
+   860→/** Тень под мебелью + глухая подложка цвета стены (не спорит с игрой). */
+   861→function furnBase(
+   862→  ctx: CanvasRenderingContext2D,
+   863→  x: number,
+   864→  y: number,
+   865→  w: number,
+   866→  h: number,
+   867→) {
+   868→  ctx.fillStyle = 'rgba(0,0,0,0.22)'
+   869→  ctx.beginPath()
+   870→  ctx.ellipse(x + w / 2, y, w * 0.52, 5, 0, 0, Math.PI * 2)
+   871→  ctx.fill()
+   872→}
+   873→
+   874→const FURNITURE: Record<ThemeName, Piece[]> = {
+   875→  bedroom: [
+   876→    {
+   877→      w: 3,
+   878→      h: 2,
+   879→      draw: (ctx, x, y) => {
+   880→        furnBase(ctx, x, y, 118, 60)
+   881→        // Кровать: изголовье, матрас, одеяло, подушка
+   882→        ctx.fillStyle = WOOD_D
+   883→        rr(ctx, x + 2, y - 52, 12, 52, 3)
+   884→        ctx.fill()
+   885→        rr(ctx, x + 108, y - 34, 8, 34, 2)
+   886→        ctx.fill()
+   887→        ctx.fillStyle = WOOD
+   888→        rr(ctx, x + 8, y - 26, 104, 16, 4)
+   889→        ctx.fill()
+   890→        ctx.fillStyle = '#7a6890'
+   891→        rr(ctx, x + 12, y - 34, 98, 12, 5)
+   892→        ctx.fill()
+   893→        ctx.fillStyle = '#8f7cab'
+   894→        rr(ctx, x + 34, y - 40, 76, 16, 6)
+   895→        ctx.fill()
+   896→        ctx.fillStyle = 'rgba(255,255,255,0.75)'
+   897→        rr(ctx, x + 16, y - 40, 22, 11, 4)
+   898→        ctx.fill()
+   899→        ctx.strokeStyle = 'rgba(0,0,0,0.25)'
+   900→        ctx.lineWidth = 1.4
+   901→        rr(ctx, x + 12, y - 34, 98, 12, 5)
+   902→        ctx.stroke()
+   903→        // ножки
+   904→        ctx.fillStyle = WOOD_D
+   905→        ctx.fillRect(x + 10, y - 10, 6, 10)
+   906→        ctx.fillRect(x + 102, y - 10, 6, 10)
+   907→      },
+   908→    },
+   909→    {
+   910→      w: 2,
+   911→      h: 3,
+   912→      draw: (ctx, x, y) => {
+   913→        furnBase(ctx, x, y, 76, 100)
+   914→        // Шкаф с двумя дверцами
+   915→        ctx.fillStyle = WOOD
+   916→        rr(ctx, x + 2, y - 96, 72, 96, 3)
+   917→        ctx.fill()
+   918→        ctx.fillStyle = WOOD_L
+   919→        rr(ctx, x + 6, y - 92, 30, 88, 2)
+   920→        ctx.fill()
+   921→        rr(ctx, x + 40, y - 92, 30, 88, 2)
+   922→        ctx.fill()
+   923→        ctx.strokeStyle = WOOD_D
+   924→        ctx.lineWidth = 2
+   925→        rr(ctx, x + 2, y - 96, 72, 96, 3)
+   926→        ctx.stroke()
+   927→        ctx.beginPath()
+   928→        ctx.moveTo(x + 38, y - 92)
+   929→        ctx.lineTo(x + 38, y - 4)
+   930→        ctx.stroke()
+   931→        // ручки
+   932→        ctx.fillStyle = '#c8b98a'
+   933→        ctx.beginPath()
+   934→        ctx.arc(x + 33, y - 50, 2.4, 0, Math.PI * 2)
+   935→        ctx.arc(x + 43, y - 50, 2.4, 0, Math.PI * 2)
+   936→        ctx.fill()
+   937→        // книга сверху
+   938→        ctx.fillStyle = '#8a4a3a'
+   939→        rr(ctx, x + 20, y - 104, 26, 8, 1.5)
+   940→        ctx.fill()
+   941→        ctx.fillStyle = '#4a6a5a'
+   942→        rr(ctx, x + 48, y - 103, 20, 7, 1.5)
+   943→        ctx.fill()
+   944→      },
+   945→    },
+   946→    {
+   947→      w: 1,
+   948→      h: 2,
+   949→      draw: (ctx, x, y, f) => {
+   950→        furnBase(ctx, x, y, 36, 44)
+   951→        // Тумбочка с будильником
+   952→        ctx.fillStyle = WOOD
+   953→        rr(ctx, x + 3, y - 34, 30, 34, 3)
+   954→        ctx.fill()
+   955→        ctx.strokeStyle = WOOD_D
+   956→        ctx.lineWidth = 1.6
+   957→        ctx.stroke()
+   958→        ctx.fillStyle = WOOD_D
+   959→        rr(ctx, x + 8, y - 26, 20, 7, 1.5)
+   960→        ctx.fill()
+   961→        // будильник — стрелки идут
+   962→        ctx.fillStyle = '#c8402e'
+   963→        ctx.beginPath()
+   964→        ctx.arc(x + 18, y - 44, 8, 0, Math.PI * 2)
+   965→        ctx.fill()
+   966→        ctx.strokeStyle = '#f4eeda'
+   967→        ctx.lineWidth = 1.6
+   968→        const am = (f * 0.05) % (Math.PI * 2)
+   969→        ctx.beginPath()
+   970→        ctx.moveTo(x + 18, y - 44)
+   971→        ctx.lineTo(x + 18 + Math.sin(am) * 5, y - 44 - Math.cos(am) * 5)
+   972→        ctx.stroke()
+   973→        ctx.fillStyle = '#7a2721'
+   974→        rr(ctx, x + 13, y - 55, 3, 4, 1)
+   975→        ctx.fill()
+   976→        rr(ctx, x + 20, y - 55, 3, 4, 1)
+   977→        ctx.fill()
+   978→      },
+   979→    },
+   980→    {
+   981→      w: 4,
+   982→      h: 1,
+   983→      draw: (ctx, x, y) => {
+   984→        // Ковёр — лежит на полу
+   985→        ctx.fillStyle = 'rgba(120,84,150,0.4)'
+   986→        rr(ctx, x + 4, y - 7, 152, 7, 3)
+   987→        ctx.fill()
+   988→        ctx.strokeStyle = 'rgba(230,200,255,0.3)'
+   989→        ctx.lineWidth = 1.4
+   990→        rr(ctx, x + 10, y - 6, 140, 5, 2)
+   991→        ctx.stroke()
+   992→      },
+   993→    },
+   994→    {
+   995→      w: 1,
+   996→      h: 2,
+   997→      draw: (ctx, x, y) => {
+   998→        furnBase(ctx, x, y, 34, 50)
+   999→        // Комнатное растение
+  1000→        ctx.fillStyle = '#a05240'
+  1001→        ctx.beginPath()
+  1002→        ctx.moveTo(x + 8, y)
+  1003→        ctx.lineTo(x + 28, y)
+  1004→        ctx.lineTo(x + 25, y - 22)
+  1005→        ctx.lineTo(x + 11, y - 22)
+  1006→        ctx.closePath()
+  1007→        ctx.fill()
+  1008→        ctx.strokeStyle = 'rgba(0,0,0,0.25)'
+  1009→        ctx.lineWidth = 1.4
+  1010→        ctx.stroke()
+  1011→        ctx.fillStyle = '#4a7a4a'
+  1012→        ctx.beginPath()
+  1013→        ctx.ellipse(x + 18, y - 38, 15, 18, 0, 0, Math.PI * 2)
+  1014→        ctx.ellipse(x + 8, y - 30, 8, 11, -0.6, 0, Math.PI * 2)
+  1015→        ctx.ellipse(x + 28, y - 30, 8, 11, 0.6, 0, Math.PI * 2)
+  1016→        ctx.fill()
+  1017→        ctx.strokeStyle = 'rgba(20,40,20,0.5)'
+  1018→        ctx.lineWidth = 1.2
+  1019→        ctx.beginPath()
+  1020→        ctx.moveTo(x + 18, y - 24)
+  1021→        ctx.lineTo(x + 18, y - 50)
+  1022→        ctx.stroke()
+  1023→      },
+  1024→    },
+  1025→    {
+  1026→      w: 2,
+  1027→      h: 1,
+  1028→      draw: (ctx, x, y) => {
+  1029→        furnBase(ctx, x, y, 60, 30)
+  1030→        // Коробка с игрушками + мячик
+  1031→        ctx.fillStyle = '#7a6a4a'
+  1032→        rr(ctx, x + 4, y - 30, 46, 30, 2)
+  1033→        ctx.fill()
+  1034→        ctx.strokeStyle = 'rgba(0,0,0,0.3)'
+  1035→        ctx.lineWidth = 1.6
+  1036→        ctx.stroke()
+  1037→        ctx.fillStyle = 'rgba(90,70,40,0.9)'
+  1038→        ctx.fillRect(x + 4, y - 22, 46, 5)
+  1039→        ctx.fillStyle = '#c8402e'
+  1040→        ctx.beginPath()
+  1041→        ctx.arc(x + 64, y - 8, 8, 0, Math.PI * 2)
+  1042→        ctx.fill()
+  1043→        ctx.strokeStyle = 'rgba(255,255,255,0.5)'
+  1044→        ctx.lineWidth = 1.6
+  1045→        ctx.beginPath()
+  1046→        ctx.arc(x + 64, y - 8, 8, 0.3, 2.2)
+  1047→        ctx.stroke()
+  1048→      },
+  1049→    },
+  1050→  ],
+  1051→  kitchen: [
+  1052→    {
+  1053→      w: 2,
+  1054→      h: 3,
+  1055→      draw: (ctx, x, y, f) => {
+  1056→        furnBase(ctx, x, y, 62, 104)
+  1057→        // Холодильник
+  1058→        ctx.fillStyle = '#b8bec4'
+  1059→        rr(ctx, x + 3, y - 100, 56, 100, 5)
+  1060→        ctx.fill()
+  1061→        ctx.strokeStyle = METAL_D
+  1062→        ctx.lineWidth = 2
+  1063→        ctx.stroke()
+  1064→        ctx.strokeStyle = 'rgba(70,80,88,0.7)'
+  1065→        ctx.lineWidth = 1.4
+  1066→        ctx.beginPath()
+  1067→        ctx.moveTo(x + 3, y - 68)
+  1068→        ctx.lineTo(x + 59, y - 68)
+  1069→        ctx.stroke()
+  1070→        ctx.fillStyle = METAL
+  1071→        rr(ctx, x + 47, y - 92, 4, 18, 2)
+  1072→        ctx.fill()
+  1073→        rr(ctx, x + 47, y - 60, 4, 18, 2)
+  1074→        ctx.fill()
+  1075→        // магнитики
+  1076→        ctx.fillStyle = '#c8402e'
+  1077→        ctx.beginPath()
+  1078→        ctx.arc(x + 18, y - 84, 3, 0, Math.PI * 2)
+  1079→        ctx.fill()
+  1080→        ctx.fillStyle = '#ffd23f'
+  1081→        ctx.beginPath()
+  1082→        ctx.arc(x + 30, y - 80, 3, 0, Math.PI * 2)
+  1083→        ctx.fill()
+  1084→        // записка
+  1085→        ctx.fillStyle = 'rgba(250,245,228,0.9)'
+  1086→        ctx.save()
+  1087→        ctx.translate(x + 26, y - 46)
+  1088→        ctx.rotate(-0.12)
+  1089→        rr(ctx, -8, -10, 16, 20, 1)
+  1090→        ctx.fill()
+  1091→        ctx.strokeStyle = 'rgba(34,30,23,0.5)'
+  1092→        ctx.lineWidth = 1
+  1093→        ctx.beginPath()
+  1094→        ctx.moveTo(-5, -4)
+  1095→        ctx.lineTo(5, -4)
+  1096→        ctx.moveTo(-5, 0)
+  1097→        ctx.lineTo(5, 0)
+  1098→        ctx.moveTo(-5, 4)
+  1099→        ctx.lineTo(2, 4)
+  1100→        ctx.stroke()
+  1101→        ctx.restore()
+  1102→        void f
+  1103→      },
+  1104→    },
+  1105→    {
+  1106→      w: 2,
+  1107→      h: 2,
+  1108→      draw: (ctx, x, y, f) => {
+  1109→        furnBase(ctx, x, y, 70, 62)
+  1110→        // Плита с кастрюлей и паром
+  1111→        ctx.fillStyle = METAL
+  1112→        rr(ctx, x + 3, y - 56, 64, 56, 4)
+  1113→        ctx.fill()
+  1114→        ctx.strokeStyle = METAL_D
+  1115→        ctx.lineWidth = 2
+  1116→        ctx.stroke()
+  1117→        ctx.fillStyle = METAL_D
+  1118→        for (const k of [0, 1, 2, 3]) {
+  1119→          ctx.beginPath()
+  1120→          ctx.arc(x + 12 + k * 14, y - 48, 4, 0, Math.PI * 2)
+  1121→          ctx.fill()
+  1122→        }
+  1123→        ctx.fillStyle = '#3a4046'
+  1124→        rr(ctx, x + 8, y - 60, 54, 7, 2)
+  1125→        ctx.fill()
+  1126→        // кастрюля
+  1127→        ctx.fillStyle = '#c05a3a'
+  1128→        rr(ctx, x + 20, y - 78, 30, 18, 3)
+  1129→        ctx.fill()
+  1130→        ctx.fillStyle = METAL
+  1131→        rr(ctx, x + 16, y - 81, 38, 5, 2)
+  1132→        ctx.fill()
+  1133→        // пар
+  1134→        ctx.strokeStyle = 'rgba(255,255,255,0.35)'
+  1135→        ctx.lineWidth = 2
+  1136→        for (let s = 0; s < 2; s++) {
+  1137→          const ph = f * 0.045 + s * Math.PI
+  1138→          ctx.beginPath()
+  1139→          ctx.moveTo(x + 30 + Math.sin(ph) * 3, y - 84)
+  1140→          ctx.quadraticCurveTo(
+  1141→            x + 34 + Math.sin(ph + 1) * 6,
+  1142→            y - 94,
+  1143→            x + 30 + Math.sin(ph + 2) * 4,
+  1144→            y - 104 - Math.sin(ph) * 4,
+  1145→          )
+  1146→          ctx.stroke()
+  1147→        }
+  1148→        // духовка
+  1149→        ctx.fillStyle = '#2e3338'
+  1150→        rr(ctx, x + 10, y - 38, 50, 26, 2)
+  1151→        ctx.fill()
+  1152→        ctx.strokeStyle = 'rgba(255,200,120,0.4)'
+  1153→        ctx.lineWidth = 1.6
+  1154→        ctx.stroke()
+  1155→      },
+  1156→    },
+  1157→    {
+  1158→      w: 3,
+  1159→      h: 2,
+  1160→      draw: (ctx, x, y) => {
+  1161→        furnBase(ctx, x, y, 112, 56)
+  1162→        // Кухонный гарнитур: столешница, мойка, шкафчики
+  1163→        ctx.fillStyle = WOOD
+  1164→        rr(ctx, x + 2, y - 44, 108, 44, 3)
+  1165→        ctx.fill()
+  1166→        ctx.fillStyle = '#d8d3c8'
+  1167→        rr(ctx, x, y - 50, 112, 9, 3)
+  1168→        ctx.fill()
+  1169→        ctx.strokeStyle = 'rgba(0,0,0,0.3)'
+  1170→        ctx.lineWidth = 1.6
+  1171→        ctx.stroke()
+  1172→        // мойка
+  1173→        ctx.fillStyle = METAL
+  1174→        rr(ctx, x + 40, y - 50, 34, 7, 2)
+  1175→        ctx.fill()
+  1176→        ctx.fillStyle = METAL_D
+  1177→        rr(ctx, x + 44, y - 49, 26, 4, 1.5)
+  1178→        ctx.fill()
+  1179→        // смеситель
+  1180→        ctx.strokeStyle = METAL
+  1181→        ctx.lineWidth = 3
+  1182→        ctx.beginPath()
+  1183→        ctx.moveTo(x + 57, y - 50)
+  1184→        ctx.lineTo(x + 57, y - 62)
+  1185→        ctx.quadraticCurveTo(x + 57, y - 66, x + 63, y - 66)
+  1186→        ctx.stroke()
+  1187→        // дверцы
+  1188→        ctx.strokeStyle = WOOD_D
+  1189→        ctx.lineWidth = 1.6
+  1190→        ctx.beginPath()
+  1191→        ctx.moveTo(x + 36, y - 41)
+  1192→        ctx.lineTo(x + 36, y - 4)
+  1193→        ctx.moveTo(x + 74, y - 41)
+  1194→        ctx.lineTo(x + 74, y - 4)
+  1195→        ctx.stroke()
+  1196→        // чайник на столешнице
+  1197→        ctx.fillStyle = '#4a7a8a'
+  1198→        rr(ctx, x + 12, y - 64, 20, 14, 3)
+  1199→        ctx.fill()
+  1200→        ctx.beginPath()
+  1201→        ctx.moveTo(x + 32, y - 58)
+  1202→        ctx.lineTo(x + 39, y - 55)
+  1203→        ctx.lineTo(x + 32, y - 53)
+  1204→        ctx.fill()
+  1205→      },
+  1206→    },
+  1207→    {
+  1208→      w: 3,
+  1209→      h: 2,
+  1210→      draw: (ctx, x, y) => {
+  1211→        furnBase(ctx, x, y, 100, 52)
+  1212→        // Обеденный стол со стулом
+  1213→        ctx.fillStyle = WOOD
+  1214→        rr(ctx, x + 6, y - 40, 88, 8, 3)
+  1215→        ctx.fill()
+  1216→        ctx.fillStyle = WOOD_D
+  1217→        ctx.fillRect(x + 12, y - 32, 7, 32)
+  1218→        ctx.fillRect(x + 80, y - 32, 7, 32)
+  1219→        // ваза с цветком
+  1220→        ctx.fillStyle = '#7a9aB0'
+  1221→        rr(ctx, x + 42, y - 54, 12, 14, 3)
+  1222→        ctx.fill()
+  1223→        ctx.strokeStyle = '#4a7a4a'
+  1224→        ctx.lineWidth = 1.6
+  1225→        ctx.beginPath()
+  1226→        ctx.moveTo(x + 48, y - 54)
+  1227→        ctx.lineTo(x + 48, y - 66)
+  1228→        ctx.stroke()
+  1229→        ctx.fillStyle = '#c8402e'
+  1230→        ctx.beginPath()
+  1231→        ctx.arc(x + 48, y - 69, 4, 0, Math.PI * 2)
+  1232→        ctx.fill()
+  1233→        // стул
+  1234→        ctx.fillStyle = WOOD
+  1235→        rr(ctx, x + 100, y - 34, 6, 34, 2)
+  1236→        ctx.fill()
+  1237→        rr(ctx, x + 84, y - 22, 24, 6, 2)
+  1238→        ctx.fill()
+  1239→        ctx.fillStyle = WOOD_D
+  1240→        ctx.fillRect(x + 86, y - 16, 5, 16)
+  1241→        ctx.fillRect(x + 102, y - 16, 5, 16)
+  1242→      },
+  1243→    },
+  1244→    {
+  1245→      w: 1,
+  1246→      h: 2,
+  1247→      draw: (ctx, x, y) => {
+  1248→        furnBase(ctx, x, y, 34, 46)
+  1249→        // Мусорное ведро
+  1250→        ctx.fillStyle = METAL
+  1251→        ctx.beginPath()
+  1252→        ctx.moveTo(x + 6, y)
+  1253→        ctx.lineTo(x + 28, y)
+  1254→        ctx.lineTo(x + 25, y - 34)
+  1255→        ctx.lineTo(x + 9, y - 34)
+  1256→        ctx.closePath()
+  1257→        ctx.fill()
+  1258→        ctx.strokeStyle = METAL_D
+  1259→        ctx.lineWidth = 1.8
+  1260→        ctx.stroke()
+  1261→        ctx.beginPath()
+  1262→        ctx.arc(x + 17, y - 36, 9, Math.PI, 0)
+  1263→        ctx.stroke()
+  1264→      },
+  1265→    },
+  1266→  ],
+  1267→  basement: [
+  1268→    {
+  1269→      w: 2,
+  1270→      h: 3,
+  1271→      draw: (ctx, x, y, f) => {
+  1272→        furnBase(ctx, x, y, 70, 100)
+  1273→        // Котёл с манометром и трубами
+  1274→        ctx.fillStyle = '#4a5a50'
+  1275→        rr(ctx, x + 6, y - 96, 58, 96, 8)
+  1276→        ctx.fill()
+  1277→        ctx.strokeStyle = '#2c362e'
+  1278→        ctx.lineWidth = 2.4
+  1279→        ctx.stroke()
+  1280→        ctx.strokeStyle = 'rgba(20,26,22,0.6)'
+  1281→        ctx.lineWidth = 1.4
+  1282→        for (let k = 0; k < 4; k++) {
+  1283→          ctx.beginPath()
+  1284→          ctx.moveTo(x + 10, y - 18 - k * 20)
+  1285→          ctx.lineTo(x + 60, y - 18 - k * 20)
+  1286→          ctx.stroke()
+  1287→        }
+  1288→        // манометр — стрелка дрожит
+  1289→        ctx.fillStyle = '#d8d3c2'
+  1290→        ctx.beginPath()
+  1291→        ctx.arc(x + 35, y - 72, 10, 0, Math.PI * 2)
+  1292→        ctx.fill()
+  1293→        ctx.strokeStyle = '#2c362e'
+  1294→        ctx.lineWidth = 1.6
+  1295→        ctx.stroke()
+  1296→        const na = -0.6 + Math.sin(f * 0.09) * 0.35
+  1297→        ctx.beginPath()
+  1298→        ctx.moveTo(x + 35, y - 72)
+  1299→        ctx.lineTo(x + 35 + Math.sin(na) * 7, y - 72 - Math.cos(na) * 7)
+  1300→        ctx.stroke()
+  1301→        // труба вверх
+  1302→        ctx.fillStyle = METAL_D
+  1303→        ctx.fillRect(x + 30, y - 112, 10, 16)
+  1304→        // огонёк-индикатор
+  1305→        ctx.fillStyle = `rgba(255,120,70,${0.5 + Math.sin(f * 0.2) * 0.3})`
+  1306→        ctx.beginPath()
+  1307→        ctx.arc(x + 35, y - 30, 3.4, 0, Math.PI * 2)
+  1308→        ctx.fill()
+  1309→      },
+  1310→    },
+  1311→    {
+  1312→      w: 3,
+  1313→      h: 2,
+  1314→      draw: (ctx, x, y) => {
+  1315→        furnBase(ctx, x, y, 108, 50)
+  1316→        // Верстак с инструментами
+  1317→        ctx.fillStyle = WOOD
+  1318→        rr(ctx, x + 2, y - 36, 104, 10, 2)
+  1319→        ctx.fill()
+  1320→        ctx.fillStyle = WOOD_D
+  1321→        ctx.fillRect(x + 8, y - 26, 8, 26)
+  1322→        ctx.fillRect(x + 92, y - 26, 8, 26)
+  1323→        ctx.fillStyle = WOOD_L
+  1324→        rr(ctx, x + 14, y - 30, 80, 8, 2)
+  1325→        ctx.fill()
+  1326→        // ящик инструментов
+  1327→        ctx.fillStyle = '#8a5a2e'
+  1328→        rr(ctx, x + 20, y - 44, 30, 14, 2)
+  1329→        ctx.fill()
+  1330→        ctx.strokeStyle = WOOD_D
+  1331→        ctx.lineWidth = 1.4
+  1332→        ctx.stroke()
+  1333→        // ключ
+  1334→        ctx.strokeStyle = METAL
+  1335→        ctx.lineWidth = 3
+  1336→        ctx.beginPath()
+  1337→        ctx.arc(x + 68, y - 40, 5, 0, Math.PI * 1.4)
+  1338→        ctx.moveTo(x + 71, y - 37)
+  1339→        ctx.lineTo(x + 80, y - 30)
+  1340→        ctx.stroke()
+  1341→        // банки с гвоздями
+  1342→        ctx.fillStyle = 'rgba(200,200,190,0.7)'
+  1343→        rr(ctx, x + 88, y - 46, 10, 12, 1)
+  1344→        ctx.fill()
+  1345→      },
+  1346→    },
+  1347→    {
+  1348→      w: 3,
+  1349→      h: 2,
+  1350→      draw: (ctx, x, y) => {
+  1351→        furnBase(ctx, x, y, 106, 70)
+  1352→        // Стеллаж с банками солений
+  1353→        ctx.fillStyle = WOOD
+  1354→        rr(ctx, x + 2, y - 70, 102, 6, 2)
+  1355→        ctx.fill()
+  1356→        rr(ctx, x + 2, y - 36, 102, 6, 2)
+  1357→        ctx.fill()
+  1358→        ctx.fillStyle = WOOD_D
+  1359→        ctx.fillRect(x + 2, y - 70, 6, 70)
+  1360→        ctx.fillRect(x + 98, y - 70, 6, 70)
+  1361→        for (let k = 0; k < 5; k++) {
+  1362→          ctx.fillStyle = 'rgba(215,205,175,0.75)'
+  1363→          rr(ctx, x + 12 + k * 19, y - 92, 14, 22, 2)
+  1364→          ctx.fill()
+  1365→          ctx.fillStyle = ['rgba(140,160,60,0.8)', 'rgba(190,110,50,0.8)', 'rgba(170,150,60,0.8)'][k % 3]
+  1366→          rr(ctx, x + 14 + k * 19, y - 82, 10, 11, 1.5)
+  1367→          ctx.fill()
+  1368→        }
+  1369→        for (let k = 0; k < 4; k++) {
+  1370→          ctx.fillStyle = 'rgba(215,205,175,0.75)'
+  1371→          rr(ctx, x + 16 + k * 22, y - 58, 15, 22, 2)
+  1372→          ctx.fill()
+  1373→          ctx.fillStyle = ['rgba(150,80,50,0.8)', 'rgba(110,140,60,0.8)'][k % 2]
+  1374→          rr(ctx, x + 18 + k * 22, y - 48, 11, 11, 1.5)
+  1375→          ctx.fill()
+  1376→        }
+  1377→      },
+  1378→    },
+  1379→    {
+  1380→      w: 1,
+  1381→      h: 2,
+  1382→      draw: (ctx, x, y) => {
+  1383→        furnBase(ctx, x, y, 40, 60)
+  1384→        // Ящики: один на другом
+  1385→        ctx.fillStyle = '#6a5232'
+  1386→        rr(ctx, x + 2, y - 34, 36, 34, 2)
+  1387→        ctx.fill()
+  1388→        ctx.strokeStyle = WOOD_D
+  1389→        ctx.lineWidth = 1.8
+  1390→        ctx.stroke()
+  1391→        ctx.fillStyle = '#7a5f3a'
+  1392→        rr(ctx, x + 6, y - 62, 28, 28, 2)
+  1393→        ctx.fill()
+  1394→        ctx.stroke()
+  1395→        ctx.beginPath()
+  1396→        ctx.moveTo(x + 6, y - 62)
+  1397→        ctx.lineTo(x + 34, y - 34)
+  1398→        ctx.moveTo(x + 34, y - 62)
+  1399→        ctx.lineTo(x + 6, y - 34)
+  1400→        ctx.stroke()
+  1401→      },
+  1402→    },
+  1403→    {
+  1404→      w: 1,
+  1405→      h: 2,
+  1406→      draw: (ctx, x, y) => {
+  1407→        furnBase(ctx, x, y, 42, 52)
+  1408→        // Бочка
+  1409→        ctx.fillStyle = '#5f4630'
+  1410→        ctx.beginPath()
+  1411→        ctx.ellipse(x + 21, y - 26, 19, 26, 0, 0, Math.PI * 2)
+  1412→        ctx.fill()
+  1413→        ctx.strokeStyle = WOOD_D
+  1414→        ctx.lineWidth = 2
+  1415→        ctx.stroke()
+  1416→        ctx.strokeStyle = METAL_D
+  1417→        ctx.lineWidth = 3
+  1418→        ctx.beginPath()
+  1419→        ctx.moveTo(x + 3, y - 34)
+  1420→        ctx.lineTo(x + 39, y - 34)
+  1421→        ctx.moveTo(x + 3, y - 18)
+  1422→        ctx.lineTo(x + 39, y - 18)
+  1423→        ctx.stroke()
+  1424→        ctx.fillStyle = WOOD_D
+  1425→        ctx.beginPath()
+  1426→        ctx.ellipse(x + 21, y - 52, 19, 5, 0, 0, Math.PI * 2)
+  1427→        ctx.fill()
+  1428→      },
+  1429→    },
+  1430→  ],
+  1431→  living: [
+  1432→    {
+  1433→      w: 3,
+  1434→      h: 2,
+  1435→      draw: (ctx, x, y) => {
+  1436→        furnBase(ctx, x, y, 118, 64)
+  1437→        // Диван с подушками
+  1438→        ctx.fillStyle = '#7a5a48'
+  1439→        rr(ctx, x + 4, y - 30, 110, 30, 8)
+  1440→        ctx.fill()
+  1441→        ctx.fillStyle = '#8a6a54'
+  1442→        rr(ctx, x + 4, y - 56, 110, 30, 8)
+  1443→        ctx.fill()
+  1444→        rr(ctx, x, y - 50, 16, 50, 6)
+  1445→        ctx.fill()
+  1446→        rr(ctx, x + 102, y - 50, 16, 50, 6)
+  1447→        ctx.fill()
+  1448→        ctx.strokeStyle = 'rgba(0,0,0,0.28)'
+  1449→        ctx.lineWidth = 1.8
+  1450→        rr(ctx, x + 4, y - 56, 110, 56, 8)
+  1451→        ctx.stroke()
+  1452→        // подушки
+  1453→        ctx.fillStyle = '#c8a04a'
+  1454→        rr(ctx, x + 24, y - 50, 24, 20, 5)
+  1455→        ctx.fill()
+  1456→        ctx.fillStyle = '#5a7a9a'
+  1457→        rr(ctx, x + 70, y - 50, 24, 20, 5)
+  1458→        ctx.fill()
+  1459→        // ножки
+  1460→        ctx.fillStyle = WOOD_D
+  1461→        ctx.fillRect(x + 10, y - 4, 6, 4)
+  1462→        ctx.fillRect(x + 102, y - 4, 6, 4)
+  1463→      },
+  1464→    },
+  1465→    {
+  1466→      w: 2,
+  1467→      h: 2,
+  1468→      draw: (ctx, x, y, f) => {
+  1469→        furnBase(ctx, x, y, 78, 66)
+  1470→        // Телевизор на тумбе — экран мерцает
+  1471→        ctx.fillStyle = WOOD
+  1472→        rr(ctx, x + 6, y - 26, 66, 26, 3)
+  1473→        ctx.fill()
+  1474→        ctx.strokeStyle = WOOD_D
+  1475→        ctx.lineWidth = 1.8
+  1476→        ctx.stroke()
+  1477→        ctx.fillStyle = '#2a2a30'
+  1478→        rr(ctx, x + 12, y - 66, 54, 40, 4)
+  1479→        ctx.fill()
+  1480→        const fl = 0.55 + Math.sin(f * 0.31) * 0.2 + Math.sin(f * 0.83) * 0.08
+  1481→        ctx.fillStyle = `rgba(140,190,235,${fl * 0.5})`
+  1482→        rr(ctx, x + 16, y - 62, 46, 32, 2)
+  1483→        ctx.fill()
+  1484→        // «сцена» на экране
+  1485→        ctx.fillStyle = `rgba(255,255,255,${fl * 0.25})`
+  1486→        rr(ctx, x + 20 + Math.sin(f * 0.05) * 8, y - 56, 12, 18, 2)
+  1487→        ctx.fill()
+  1488→        ctx.fillStyle = '#1d1d22'
+  1489→        ctx.fillRect(x + 32, y - 26, 14, 4)
+  1490→      },
+  1491→    },
+  1492→    {
+  1493→      w: 2,
+  1494→      h: 3,
+  1495→      draw: (ctx, x, y) => {
+  1496→        furnBase(ctx, x, y, 74, 100)
+  1497→        // Книжный шкаф
+  1498→        ctx.fillStyle = WOOD
+  1499→        rr(ctx, x + 2, y - 100, 70, 100, 3)
+  1500→        ctx.fill()
+  1501→        ctx.fillStyle = '#2e2419'
+  1502→        rr(ctx, x + 6, y - 94, 62, 88, 2)
+  1503→        ctx.fill()
+  1504→        ctx.strokeStyle = WOOD_D
+  1505→        ctx.lineWidth = 2
+  1506→        rr(ctx, x + 2, y - 100, 70, 100, 3)
+  1507→        ctx.stroke()
+  1508→        // книги — корешки
+  1509→        const cols = ['#8a4a3a', '#4a6a5a', '#c8a04a', '#5a7a9a', '#7a5a8a']
+  1510→        for (let shelf = 0; shelf < 3; shelf++) {
+  1511→          const sy = y - 88 - shelf * 30
+  1512→          ctx.fillStyle = WOOD
+  1513→          ctx.fillRect(x + 6, sy + 24, 62, 4)
+  1514→          let bx = x + 9
+  1515→          let bi = shelf * 3
+  1516→          while (bx < x + 60) {
+  1517→            const bw = 5 + ((bi * 37) % 6)
+  1518→            ctx.fillStyle = cols[(bi + shelf) % cols.length]
+  1519→            ctx.fillRect(bx, sy, bw, 24)
+  1520→            bx += bw + 1.5
+  1521→            bi++
+  1522→          }
+  1523→        }
+  1524→      },
+  1525→    },
+  1526→    {
+  1527→      w: 1,
+  1528→      h: 3,
+  1529→      draw: (ctx, x, y, f) => {
+  1530→        furnBase(ctx, x, y, 36, 92)
+  1531→        // Торшер — тёплое пятно света
+  1532→        ctx.strokeStyle = METAL_D
+  1533→        ctx.lineWidth = 3
+  1534→        ctx.beginPath()
+  1535→        ctx.moveTo(x + 18, y)
+  1536→        ctx.lineTo(x + 18, y - 70)
+  1537→        ctx.stroke()
+  1538→        ctx.fillStyle = METAL_D
+  1539→        ctx.beginPath()
+  1540→        ctx.ellipse(x + 18, y, 14, 4, 0, 0, Math.PI * 2)
+  1541→        ctx.fill()
+  1542→        const gl = 0.75 + Math.sin(f * 0.11) * 0.12
+  1543→        ctx.fillStyle = `rgba(255,214,130,${0.75 * gl})`
+  1544→        ctx.beginPath()
+  1545→        ctx.moveTo(x + 4, y - 92)
+  1546→        ctx.lineTo(x + 32, y - 92)
+  1547→        ctx.lineTo(x + 26, y - 68)
+  1548→        ctx.lineTo(x + 10, y - 68)
+  1549→        ctx.closePath()
+  1550→        ctx.fill()
+  1551→        ctx.strokeStyle = 'rgba(0,0,0,0.3)'
+  1552→        ctx.lineWidth = 1.6
+  1553→        ctx.stroke()
+  1554→        const lg = ctx.createRadialGradient(x + 18, y - 66, 4, x + 18, y - 66, 52)
+  1555→        lg.addColorStop(0, `rgba(255,220,140,${0.16 * gl})`)
+  1556→        lg.addColorStop(1, 'rgba(255,220,140,0)')
+  1557→        ctx.fillStyle = lg
+  1558→        ctx.fillRect(x - 34, y - 112, 104, 112)
+  1559→      },
+  1560→    },
+  1561→    {
+  1562→      w: 2,
+  1563→      h: 1,
+  1564→      draw: (ctx, x, y) => {
+  1565→        furnBase(ctx, x, y, 66, 36)
+  1566→        // Журнальный столик с кружкой
+  1567→        ctx.fillStyle = WOOD
+  1568→        rr(ctx, x + 4, y - 22, 58, 7, 3)
+  1569→        ctx.fill()
+  1570→        ctx.fillStyle = WOOD_D
+  1571→        ctx.fillRect(x + 8, y - 15, 6, 15)
+  1572→        ctx.fillRect(x + 52, y - 15, 6, 15)
+  1573→        // журнал
+  1574→        ctx.fillStyle = '#5a7a9a'
+  1575→        rr(ctx, x + 12, y - 26, 16, 5, 1)
+  1576→        ctx.fill()
+  1577→        // кружка
+  1578→        ctx.fillStyle = '#c8402e'
+  1579→        rr(ctx, x + 40, y - 32, 10, 10, 2)
+  1580→        ctx.fill()
+  1581→        ctx.strokeStyle = '#c8402e'
+  1582→        ctx.lineWidth = 1.6
+  1583→        ctx.beginPath()
+  1584→        ctx.arc(x + 52, y - 27, 3.4, -0.6, 1.6)
+  1585→        ctx.stroke()
+  1586→      },
+  1587→    },
+  1588→    {
+  1589→      w: 2,
+  1590→      h: 2,
+  1591→      draw: (ctx, x, y) => {
+  1592→        furnBase(ctx, x, y, 64, 60)
+  1593→        // Кресло
+  1594→        ctx.fillStyle = '#5a7a6a'
+  1595→        rr(ctx, x + 8, y - 34, 48, 34, 9)
+  1596→        ctx.fill()
+  1597→        rr(ctx, x + 4, y - 58, 56, 34, 10)
+  1598→        ctx.fill()
+  1599→        ctx.strokeStyle = 'rgba(0,0,0,0.28)'
+  1600→        ctx.lineWidth = 1.8
+  1601→        rr(ctx, x + 4, y - 58, 56, 58, 10)
+  1602→        ctx.stroke()
+  1603→        ctx.fillStyle = WOOD_D
+  1604→        ctx.fillRect(x + 10, y - 4, 6, 4)
+  1605→        ctx.fillRect(x + 48, y - 4, 6, 4)
+  1606→      },
+  1607→    },
+  1608→  ],
+  1609→  attic: [
+  1610→    {
+  1611→      w: 2,
+  1612→      h: 1,
+  1613→      draw: (ctx, x, y) => {
+  1614→        furnBase(ctx, x, y, 70, 44)
+  1615→        // Сундук с ремнями
+  1616→        ctx.fillStyle = WOOD
+  1617→        rr(ctx, x + 2, y - 40, 66, 40, 4)
+  1618→        ctx.fill()
+  1619→        ctx.fillStyle = WOOD_L
+  1620→        rr(ctx, x + 2, y - 40, 66, 14, 4)
+  1621→        ctx.fill()
+  1622→        ctx.strokeStyle = WOOD_D
+  1623→        ctx.lineWidth = 2
+  1624→        rr(ctx, x + 2, y - 40, 66, 40, 4)
+  1625→        ctx.stroke()
+  1626→        ctx.strokeStyle = METAL_D
+  1627→        ctx.lineWidth = 3.4
+  1628→        ctx.beginPath()
+  1629→        ctx.moveTo(x + 16, y - 40)
+  1630→        ctx.lineTo(x + 16, y)
+  1631→        ctx.moveTo(x + 52, y - 40)
+  1632→        ctx.lineTo(x + 52, y)
+  1633→        ctx.stroke()
+  1634→        // замочек
+  1635→        ctx.fillStyle = '#c8a04a'
+  1636→        rr(ctx, x + 30, y - 16, 10, 9, 2)
+  1637→        ctx.fill()
+  1638→        ctx.strokeStyle = WOOD_D
+  1639→        ctx.lineWidth = 1.4
+  1640→        ctx.stroke()
+  1641→      },
+  1642→    },
+  1643→    {
+  1644→      w: 1,
+  1645→      h: 2,
+  1646→      draw: (ctx, x, y) => {
+  1647→        furnBase(ctx, x, y, 40, 56)
+  1648→        // Коробки с надписями
+  1649→        ctx.fillStyle = '#8a7048'
+  1650→        rr(ctx, x + 2, y - 30, 36, 30, 2)
+  1651→        ctx.fill()
+  1652→        ctx.strokeStyle = 'rgba(60,44,26,0.8)'
+  1653→        ctx.lineWidth = 1.8
+  1654→        ctx.stroke()
+  1655→        ctx.fillStyle = '#7a6238'
+  1656→        rr(ctx, x + 7, y - 56, 28, 26, 2)
+  1657→        ctx.fill()
+  1658→        ctx.stroke()
+  1659→        ctx.strokeStyle = 'rgba(60,44,26,0.55)'
+  1660→        ctx.lineWidth = 1.2
+  1661→        ctx.beginPath()
+  1662→        ctx.moveTo(x + 10, y - 44)
+  1663→        ctx.lineTo(x + 32, y - 44)
+  1664→        ctx.moveTo(x + 6, y - 18)
+  1665→        ctx.lineTo(x + 30, y - 18)
+  1666→        ctx.stroke()
+  1667→      },
+  1668→    },
+  1669→    {
+  1670→      w: 2,
+  1671→      h: 2,
+  1672→      draw: (ctx, x, y, f) => {
+  1673→        furnBase(ctx, x, y, 62, 66)
+  1674→        // Кресло-качалка — качается
+  1675→        const rock = Math.sin(f * 0.03) * 0.1
+  1676→        ctx.save()
+  1677→        ctx.translate(x + 31, y)
+  1678→        ctx.rotate(rock)
+  1679→        ctx.strokeStyle = WOOD
+  1680→        ctx.lineWidth = 4.5
+  1681→        ctx.lineCap = 'round'
+  1682→        // полоз
+  1683→        ctx.beginPath()
+  1684→        ctx.moveTo(-26, -4)
+  1685→        ctx.quadraticCurveTo(0, 6, 26, -4)
+  1686→        ctx.stroke()
+  1687→        // ножки
+  1688→        ctx.beginPath()
+  1689→        ctx.moveTo(-16, -6)
+  1690→        ctx.lineTo(-10, -40)
+  1691→        ctx.moveTo(16, -6)
+  1692→        ctx.lineTo(10, -40)
+  1693→        ctx.moveTo(-8, -22)
+  1694→        ctx.lineTo(8, -22)
+  1695→        ctx.stroke()
+  1696→        // сиденье и спинка
+  1697→        ctx.fillStyle = WOOD
+  1698→        rr(ctx, -14, -44, 28, 8, 3)
+  1699→        ctx.fill()
+  1700→        for (let k = 0; k < 4; k++) {
+  1701→          ctx.beginPath()
+  1702→          ctx.moveTo(-10 + k * 6, -44)
+  1703→          ctx.lineTo(-13 + k * 7, -70)
+  1704→          ctx.stroke()
+  1705→        }
+  1706→        ctx.beginPath()
+  1707→        ctx.moveTo(-13, -68)
+  1708→        ctx.quadraticCurveTo(0, -62, 13, -68)
+  1709→        ctx.stroke()
+  1710→        ctx.restore()
+  1711→        ctx.lineCap = 'butt'
+  1712→      },
+  1713→    },
+  1714→    {
+  1715→      w: 2,
+  1716→      h: 2,
+  1717→      draw: (ctx, x, y) => {
+  1718→        furnBase(ctx, x, y, 74, 50)
+  1719→        // Старое зеркало, накрытое простынёй
+  1720→        ctx.fillStyle = 'rgba(235,228,208,0.85)'
+  1721→        ctx.beginPath()
+  1722→        ctx.moveTo(x + 6, y)
+  1723→        ctx.quadraticCurveTo(x + 2, y - 40, x + 20, y - 52)
+  1724→        ctx.quadraticCurveTo(x + 44, y - 62, x + 60, y - 44)
+  1725→        ctx.quadraticCurveTo(x + 72, y - 26, x + 66, y)
+  1726→        ctx.closePath()
+  1727→        ctx.fill()
+  1728→        ctx.strokeStyle = 'rgba(120,105,80,0.7)'
+  1729→        ctx.lineWidth = 2
+  1730→        ctx.stroke()
+  1731→        // складки
+  1732→        ctx.strokeStyle = 'rgba(120,105,80,0.4)'
+  1733→        ctx.lineWidth = 1.6
+  1734→        ctx.beginPath()
+  1735→        ctx.moveTo(x + 26, y - 56)
+  1736→        ctx.quadraticCurveTo(x + 30, y - 30, x + 26, y - 2)
+  1737→        ctx.moveTo(x + 44, y - 56)
+  1738→        ctx.quadraticCurveTo(x + 48, y - 28, x + 44, y - 2)
+  1739→        ctx.stroke()
+  1740→      },
+  1741→    },
+  1742→    {
+  1743→      w: 2,
+  1744→      h: 1,
+  1745→      draw: (ctx, x, y) => {
+  1746→        furnBase(ctx, x, y, 62, 30)
+  1747→        // Чемодан
+  1748→        ctx.fillStyle = '#7a5a3a'
+  1749→        rr(ctx, x + 3, y - 26, 56, 26, 5)
+  1750→        ctx.fill()
+  1751→        ctx.strokeStyle = WOOD_D
+  1752→        ctx.lineWidth = 2
+  1753→        ctx.stroke()
+  1754→        ctx.strokeStyle = 'rgba(50,36,20,0.8)'
+  1755→        ctx.lineWidth = 2.4
+  1756→        ctx.beginPath()
+  1757→        ctx.moveTo(x + 18, y - 26)
+  1758→        ctx.lineTo(x + 18, y)
+  1759→        ctx.moveTo(x + 44, y - 26)
+  1760→        ctx.lineTo(x + 44, y)
+  1761→        ctx.stroke()
+  1762→        // ручка
+  1763→        ctx.strokeStyle = WOOD_D
+  1764→        ctx.lineWidth = 3
+  1765→        ctx.beginPath()
+  1766→        ctx.arc(x + 31, y - 26, 6, Math.PI, 0)
+  1767→        ctx.stroke()
+  1768→        // наклейка
+  1769→        ctx.fillStyle = 'rgba(240,232,212,0.85)'
+  1770→        rr(ctx, x + 24, y - 20, 14, 10, 1.5)
+  1771→        ctx.fill()
+  1772→      },
+  1773→    },
+  1774→  ],
+  1775→  office: [
+  1776→    {
+  1777→      w: 3,
+  1778→      h: 2,
+  1779→      draw: (ctx, x, y, f) => {
+  1780→        furnBase(ctx, x, y, 112, 62)
+  1781→        // Письменный стол: тумба с ящиками, ноутбук, лампа, книги
+  1782→        ctx.fillStyle = WOOD
+  1783→        rr(ctx, x + 70, y - 42, 40, 42, 3)
+  1784→        ctx.fill()
+  1785→        ctx.strokeStyle = WOOD_D
+  1786→        ctx.lineWidth = 1.8
+  1787→        ctx.stroke()
+  1788→        ctx.beginPath()
+  1789→        ctx.moveTo(x + 74, y - 28)
+  1790→        ctx.lineTo(x + 106, y - 28)
+  1791→        ctx.moveTo(x + 74, y - 14)
+  1792→        ctx.lineTo(x + 106, y - 14)
+  1793→        ctx.stroke()
+  1794→        ctx.fillStyle = '#b08d57'
+  1795→        ctx.fillRect(x + 86, y - 24, 8, 2)
+  1796→        ctx.fillRect(x + 86, y - 10, 8, 2)
+  1797→        // левая ножка и столешница
+  1798→        ctx.fillStyle = WOOD_D
+  1799→        ctx.fillRect(x + 6, y - 40, 6, 40)
+  1800→        ctx.fillStyle = WOOD_L
+  1801→        rr(ctx, x, y - 50, 114, 9, 3)
+  1802→        ctx.fill()
+  1803→        ctx.strokeStyle = 'rgba(0,0,0,0.3)'
+  1804→        ctx.lineWidth = 1.4
+  1805→        ctx.stroke()
+  1806→        // ноутбук — экран мягко светится
+  1807→        ctx.fillStyle = '#31363c'
+  1808→        rr(ctx, x + 28, y - 74, 30, 22, 2)
+  1809→        ctx.fill()
+  1810→        const scr = 0.28 + Math.sin(f * 0.06) * 0.08
+  1811→        ctx.fillStyle = `rgba(150,190,220,${scr})`
+  1812→        rr(ctx, x + 31, y - 71, 24, 16, 1.5)
+  1813→        ctx.fill()
+  1814→        ctx.fillStyle = '#262b30'
+  1815→        rr(ctx, x + 26, y - 52, 34, 3.5, 1.5)
+  1816→        ctx.fill()
+  1817→        // стопка книг
+  1818→        ctx.fillStyle = '#7a4a3a'
+  1819→        rr(ctx, x + 7, y - 56, 18, 6, 1.5)
+  1820→        ctx.fill()
+  1821→        ctx.fillStyle = '#4a6a5a'
+  1822→        rr(ctx, x + 9, y - 62, 15, 6, 1.5)
+  1823→        ctx.fill()
+  1824→        // листы бумаги
+  1825→        ctx.fillStyle = 'rgba(240,232,214,0.85)'
+  1826→        rr(ctx, x + 62, y - 54, 16, 5, 1)
+  1827→        ctx.fill()
+  1828→        // настольная лампа с тёплым светом
+  1829→        ctx.strokeStyle = '#8a6f3d'
+  1830→        ctx.lineWidth = 2.4
+  1831→        ctx.beginPath()
+  1832→        ctx.moveTo(x + 92, y - 50)
+  1833→        ctx.lineTo(x + 88, y - 68)
+  1834→        ctx.stroke()
+  1835→        ctx.fillStyle = '#8a6f3d'
+  1836→        ctx.beginPath()
+  1837→        ctx.ellipse(x + 92, y - 50, 6, 2, 0, 0, Math.PI * 2)
+  1838→        ctx.fill()
+  1839→        const gl = 0.8 + Math.sin(f * 0.13) * 0.12
+  1840→        ctx.fillStyle = `rgba(255,208,120,${0.72 * gl})`
+  1841→        ctx.beginPath()
+  1842→        ctx.moveTo(x + 78, y - 68)
+  1843→        ctx.lineTo(x + 98, y - 68)
+  1844→        ctx.lineTo(x + 94, y - 80)
+  1845→        ctx.lineTo(x + 82, y - 80)
+  1846→        ctx.closePath()
+  1847→        ctx.fill()
+  1848→        ctx.strokeStyle = 'rgba(0,0,0,0.3)'
+  1849→        ctx.lineWidth = 1.2
+  1850→        ctx.stroke()
+  1851→        const lg = ctx.createRadialGradient(x + 88, y - 66, 3, x + 88, y - 66, 46)
+  1852→        lg.addColorStop(0, `rgba(255,208,120,${0.18 * gl})`)
+  1853→        lg.addColorStop(1, 'rgba(255,208,120,0)')
+  1854→        ctx.fillStyle = lg
+  1855→        ctx.fillRect(x + 42, y - 112, 92, 112)
+  1856→      },
+  1857→    },
+  1858→    {
+  1859→      w: 2,
+  1860→      h: 2,
+  1861→      draw: (ctx, x, y) => {
+  1862→        furnBase(ctx, x, y, 64, 60)
+  1863→        // Кожаное кресло: спинка, подлокотники, плед, заклёпки
+  1864→        ctx.fillStyle = '#6a4530'
+  1865→        rr(ctx, x + 10, y - 58, 44, 46, 12)
+  1866→        ctx.fill()
+  1867→        ctx.fillStyle = '#7d5539'
+  1868→        rr(ctx, x + 16, y - 52, 32, 22, 8)
+  1869→        ctx.fill()
+  1870→        ctx.fillStyle = '#5d3c28'
+  1871→        rr(ctx, x + 4, y - 40, 12, 26, 5)
+  1872→        ctx.fill()
+  1873→        rr(ctx, x + 48, y - 40, 12, 26, 5)
+  1874→        ctx.fill()
+  1875→        ctx.fillStyle = '#744c33'
+  1876→        rr(ctx, x + 12, y - 20, 40, 14, 5)
+  1877→        ctx.fill()
+  1878→        ctx.fillStyle = '#b08d57'
+  1879→        for (const [rx, ry] of [
+  1880→          [6, -36],
+  1881→          [6, -26],
+  1882→          [56, -36],
+  1883→          [56, -26],
+  1884→        ]) {
+  1885→          ctx.beginPath()
+  1886→          ctx.arc(x + rx, y + ry, 1.5, 0, Math.PI * 2)
+  1887→          ctx.fill()
+  1888→        }
+  1889→        ctx.fillStyle = WOOD_D
+  1890→        ctx.fillRect(x + 10, y - 6, 6, 6)
+  1891→        ctx.fillRect(x + 48, y - 6, 6, 6)
+  1892→        // плед, перекинутый через подлокотник
+  1893→        ctx.fillStyle = 'rgba(150,110,70,0.7)'
+  1894→        rr(ctx, x + 44, y - 42, 18, 8, 3)
+  1895→        ctx.fill()
+  1896→      },
+  1897→    },
+  1898→    {
+  1899→      w: 2,
+  1900→      h: 3,
+  1901→      draw: (ctx, x, y) => {
+  1902→        furnBase(ctx, x, y, 74, 100)
+  1903→        // Домашний книжный шкаф: три ряда книг + горизонтальная стопка
+  1904→        ctx.fillStyle = WOOD
+  1905→        rr(ctx, x + 2, y - 100, 70, 100, 3)
+  1906→        ctx.fill()
+  1907→        ctx.fillStyle = '#2f2418'
+  1908→        rr(ctx, x + 6, y - 94, 62, 88, 2)
+  1909→        ctx.fill()
+  1910→        ctx.strokeStyle = WOOD_D
+  1911→        ctx.lineWidth = 2
+  1912→        rr(ctx, x + 2, y - 100, 70, 100, 3)
+  1913→        ctx.stroke()
+  1914→        const cols = ['#7a4a3a', '#56665a', '#94805a', '#4a5a6a', '#6a4a60']
+  1915→        for (let shelf = 0; shelf < 3; shelf++) {
+  1916→          const sy = y - 86 - shelf * 28
+  1917→          ctx.fillStyle = WOOD
+  1918→          ctx.fillRect(x + 6, sy + 22, 62, 4)
+  1919→          let bx = x + 9
+  1920→          let bi = shelf * 4 + 1
+  1921→          if (shelf === 1) {
+  1922→            // горизонтальная стопка + бронзовая статуэтка
+  1923→            ctx.fillStyle = '#4a5a6a'
+  1924→            ctx.fillRect(x + 10, sy + 12, 24, 6)
+  1925→            ctx.fillStyle = '#7a4a3a'
+  1926→            ctx.fillRect(x + 12, sy + 6, 20, 6)
+  1927→            ctx.fillStyle = '#8a6f3d'
+  1928→            ctx.beginPath()
+  1929→            ctx.arc(x + 52, sy + 12, 4, Math.PI, 0)
+  1930→            ctx.fill()
+  1931→            ctx.fillRect(x + 50, sy + 12, 4, 8)
+  1932→            bx = x + 40
+  1933→            bi = shelf * 4 + 5
+  1934→          }
+  1935→          while (bx < x + 58) {
+  1936→            const bw = 5 + ((bi * 31) % 6)
+  1937→            const bh = 18 + ((bi * 13) % 5)
+  1938→            ctx.fillStyle = cols[(bi + shelf) % cols.length]
+  1939→            ctx.fillRect(bx, sy + 22 - bh, bw, bh)
+  1940→            bx += bw + 1.5
+  1941→            bi++
+  1942→          }
+  1943→        }
+  1944→      },
+  1945→    },
+  1946→    {
+  1947→      w: 3,
+  1948→      h: 2,
+  1949→      draw: (ctx, x, y, f) => {
+  1950→        furnBase(ctx, x, y, 112, 58)
+  1951→        // Камин: каменный портал, живой огонь, полка со свечой и часами
+  1952→        ctx.fillStyle = '#4f3a2a'
+  1953→        rr(ctx, x + 4, y - 52, 104, 52, 4)
+  1954→        ctx.fill()
+  1955→        ctx.strokeStyle = 'rgba(0,0,0,0.35)'
+  1956→        ctx.lineWidth = 2
+  1957→        ctx.stroke()
+  1958→        // кирпичная кладка намёком
+  1959→        ctx.strokeStyle = 'rgba(30,20,12,0.4)'
+  1960→        ctx.lineWidth = 1.4
+  1961→        for (let k = 0; k < 3; k++) {
+  1962→          const by = y - 40 + k * 14
+  1963→          ctx.beginPath()
+  1964→          ctx.moveTo(x + 8, by)
+  1965→          ctx.lineTo(x + 32, by)
+  1966→          ctx.moveTo(x + 80, by)
+  1967→          ctx.lineTo(x + 104, by)
+  1968→          ctx.stroke()
+  1969→        }
+  1970→        // тёмная топка
+  1971→        ctx.fillStyle = '#1c120c'
+  1972→        rr(ctx, x + 32, y - 34, 48, 34, 3)
+  1973→        ctx.fill()
+  1974→        // дрова
+  1975→        ctx.strokeStyle = '#4a3320'
+  1976→        ctx.lineWidth = 4.5
+  1977→        ctx.lineCap = 'round'
+  1978→        ctx.beginPath()
+  1979→        ctx.moveTo(x + 42, y - 9)
+  1980→        ctx.lineTo(x + 68, y - 12)
+  1981→        ctx.moveTo(x + 46, y - 15)
+  1982→        ctx.lineTo(x + 66, y - 6)
+  1983→        ctx.stroke()
+  1984→        ctx.lineCap = 'butt'
+  1985→        // огонь — живые язычки
+  1986→        for (let k = 0; k < 3; k++) {
+  1987→          const fx = x + 46 + k * 10
+  1988→          const hgt = 13 + Math.sin(f * 0.21 + k * 2.1) * 4
+  1989→          const sway = Math.sin(f * 0.13 + k) * 2.4
+  1990→          const fg = ctx.createLinearGradient(0, y - 6, 0, y - 6 - hgt)
+  1991→          fg.addColorStop(
+  1992→            0,
+  1993→            k === 1 ? 'rgba(255,214,110,0.95)' : 'rgba(255,150,60,0.9)',
+  1994→          )
+  1995→          fg.addColorStop(1, 'rgba(230,80,30,0)')
+  1996→          ctx.fillStyle = fg
+  1997→          ctx.beginPath()
+  1998→          ctx.moveTo(fx - 4.5, y - 6)
+  1999→          ctx.quadraticCurveTo(fx - 5 + sway, y - 6 - hgt * 0.6, fx + sway, y - 6 - hgt)
+  2000→          ctx.quadraticCurveTo(fx + 5 + sway, y - 6 - hgt * 0.6, fx + 4.5, y - 6)
+
+[showing lines 1-2000 of 3425; use offset=2001 with limit to continue reading]
