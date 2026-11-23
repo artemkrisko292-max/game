@@ -568,7 +568,9 @@ export default function EnergoHeroGame() {
                 <MenuMain
                   best={best}
                   unlocked={progress.unlocked}
-                  onContinue={() => act({ select: progress.unlocked - 1 })}
+                  // Продолжение идёт через проверку глав: если открытый уровень
+                  // открывает новую главу хроники — сначала показываем её.
+                  onContinue={() => pickWithStory(progress.unlocked - 1)}
                   onFresh={startFresh}
                   onLevels={() => setMenuView('levels')}
                   onHowto={() => setMenuView('howto')}
@@ -592,8 +594,10 @@ export default function EnergoHeroGame() {
                 <MenuStory
                   seen={seenScenes}
                   onPlay={(id) => {
-                    setMenuView('main')
-                    playScene(id, () => undefined, true)
+                    // После просмотра главы возвращаемся в список хроники,
+                    // а не в главное меню: иначе следующая карточка
+                    // «не нажимается» и глава кажется сломанной.
+                    playScene(id, () => setMenuView('story'), true)
                   }}
                   onClose={() => setMenuView('main')}
                 />
