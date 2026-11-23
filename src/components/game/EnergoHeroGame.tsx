@@ -242,18 +242,25 @@ export default function EnergoHeroGame() {
   const runSeenRef = useRef<Set<string>>(new Set())
   const afterSceneRef = useRef<(() => void) | null>(null)
 
-  /** Показать главу хроники; повторно в рамках смены — только по запросу (force). */
+  /**
+   * Показать главу хроники. В рамках смены глава играется один раз.
+   * preview (просмотр карточки из хроники) всегда открывает сцену, но не
+   * пишет её в runSeenRef: превью — это архив, а не игровое событие.
+   * Иначе просмотр главы в хронике «съедает» её триггер, и в нарядах
+   * главы молча не запускаются до конца сессии.
+   */
   const playScene = useCallback(
-    (id: string, after: () => void, force = false) => {
+    (id: string, after: () => void, opts?: { preview?: boolean }) => {
       if (!STORY[id]) {
         after()
         return
       }
-      if (!force && runSeenRef.current.has(id)) {
+      const preview = opts?.preview === true
+      if (!preview && runSeenRef.current.has(id)) {
         after()
         return
       }
-      runSeenRef.current.add(id)
+      if (!preview) runSeenRef.current.add(id)
       seenRef.current.add(id) // в хронике глава остаётся найденной навсегда
       saveSeenScenes(seenRef.current)
       setSeenScenes(new Set(seenRef.current))
@@ -332,7 +339,7 @@ export default function EnergoHeroGame() {
             /* ignore */
           }
           // Финал: эпилог хроники поверх отчёта — всегда, это конец игры
-          playScene('epilogue', () => {}, true)
+          playScene('epilogue', () => {})
         }
       },
     })
@@ -448,7 +455,7 @@ export default function EnergoHeroGame() {
   /** Новая смена: главы хроники показываются заново. */
   const startFresh = useCallback(() => {
     runSeenRef.current = new Set()
-    playScene('prologue', () => act('start'), true)
+    playScene('prologue', () => act('start'))
   }, [playScene, act])
 
   // Enter — основное действие на оверлеях (когда не открыта катсцена)
@@ -597,7 +604,9 @@ export default function EnergoHeroGame() {
                     // После просмотра главы возвращаемся в список хроники,
                     // а не в главное меню: иначе следующая карточка
                     // «не нажимается» и глава кажется сломанной.
-                    playScene(id, () => setMenuView('story'), true)
+                    // preview: просмотр из архива не глушит игровой
+                    // триггер главы — она ещё должна сыграть в нарядах.
+                    playScene(id, () => setMenuView('story'), { preview: true })
                   }}
                   onClose={() => setMenuView('main')}
                 />
