@@ -1,7 +1,7 @@
 // Проверка геометрии уровней «ЭнергоГероя»:
 // симулирует физику игрока 1-в-1 с engine.ts и BFS-ом по поверхностям
 // проверяет, что все лампочки, рубильники, предохранители и выход достижимы.
-// Запуск: bun scripts/verify_levels.mjs
+// Запуск: bun tools/verify_levels.mjs
 
 import { LEVELS } from '../src/lib/game/levels.ts'
 
